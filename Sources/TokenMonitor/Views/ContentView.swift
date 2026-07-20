@@ -141,6 +141,12 @@ struct ContentView: View {
             .buttonStyle(.plain)
             .help("刷新视图")
 
+            Button(action: { FloatingWidgetWindow.shared.toggle(viewModel: viewModel) }) {
+                Image(systemName: "rectangle.split.2x1")
+            }
+            .buttonStyle(.plain)
+            .help("显示/隐藏桌面小窗")
+
             Button(action: onOpenSettings) {
                 Image(systemName: "gearshape")
             }

@@ -17,6 +17,8 @@ final class FloatingWidgetWindow {
 
     private var window: NSPanel?
     private var viewModel: DashboardViewModel?
+    private var menu: NSMenu?
+    private var rightClickMonitor: Any?
 
     enum Size: String, CaseIterable {
         case compact      // 200×100
@@ -49,6 +51,7 @@ final class FloatingWidgetWindow {
         if window == nil {
             createWindow()
         }
+        Self.log("show: window=\(window != nil ? "ok" : "nil") isVisible=\(window?.isVisible ?? false)")
         window?.makeKeyAndOrderFront(nil)
         window?.orderFrontRegardless()
         setVisible(true)
@@ -60,11 +63,16 @@ final class FloatingWidgetWindow {
     }
 
     func toggle(viewModel: DashboardViewModel) {
+        Self.log("toggle: isVisible=\(isVisible)")
         if window?.isVisible == true {
             hide()
         } else {
             show(viewModel: viewModel)
         }
+    }
+
+    private static func log(_ msg: String) {
+        FileHandle.standardError.write(Data(("[FloatingWidget] " + msg + "\n").utf8))
     }
 
     var isVisible: Bool {
@@ -74,6 +82,7 @@ final class FloatingWidgetWindow {
     // MARK: - Window Creation
 
     private func createWindow() {
+        Self.log("createWindow: begin, size=\(currentSize().rawValue)")
         let size = currentSize()
         let panel = WidgetPanel(
             contentRect: NSRect(origin: .zero, size: size.NSSize),
@@ -108,10 +117,91 @@ final class FloatingWidgetWindow {
             }
         }
 
-        let hosting = NSHostingController(rootView: AnyView(EmptyView()))
+        let hosting = NSHostingController(rootView: AnyView(EmptyView())) as NSHostingController<AnyView>
         panel.contentViewController = hosting
 
+        // 关键：让 contentView / hosting.view 透明 + 圆角，
+        // 否则窗口默认矩形会从 ZStack 圆角矩形的四个角漏出来
+        hosting.view.wantsLayer = true
+        hosting.view.layer?.backgroundColor = .clear
+        hosting.view.layer?.cornerRadius = 16
+        hosting.view.layer?.masksToBounds = true
+
         // 右键菜单：切尺寸 / 透明度 / 打开完整面板 / 关闭
+        let menu = buildMenu(size: size)
+        self.menu = menu
+
+        // 把菜单挂到 hosting.view 上
+        hosting.view.menu = menu
+
+        // 监听全局右键事件 - 如果鼠标在窗口内，弹出菜单
+        // （hosting.view.menu 在 SwiftUI 内容上有时不响应，这是兜底方案）
+        rightClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in
+            guard let self, let window = self.window, window.isVisible else { return event }
+            // event.locationInWindow 是在 event.window 坐标系下的点
+            // 转换到屏幕坐标
+            let pointInScreen = event.window?.convertToScreen(NSRect(origin: event.locationInWindow, size: .zero)).origin ?? .zero
+            if window.frame.contains(pointInScreen) {
+                self.menu?.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+                return nil  // 消费事件
+            }
+            return event
+        }
+
+        window = panel
+        renderContent()
+    }
+
+    // MARK: - Render
+
+    private func renderContent() {
+        guard let window, let viewModel else {
+            Self.log("renderContent: ❌ window=\(window != nil) viewModel=\(viewModel != nil)")
+            return
+        }
+        guard let hosting = window.contentViewController as? NSHostingController<AnyView> else {
+            Self.log("renderContent: ❌ contentViewController type mismatch: \(String(describing: window.contentViewController))")
+            return
+        }
+        let size = currentSize()
+        let view = FloatingWidgetView(viewModel: viewModel, size: size)
+            .environment(\.floatingWidgetSize, size)
+        hosting.rootView = AnyView(view)
+        Self.log("renderContent: ✅ rootView updated, size=\(size.rawValue)")
+    }
+
+    // MARK: - Menu Actions
+
+    @objc private func resizeTo(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let s = Size(rawValue: raw) else { return }
+        UserDefaults.standard.set(s.rawValue, forKey: "floating_widget_size")
+        // 直接调整窗口大小 + 重新渲染（不重建窗口，避免菜单 target 失效）
+        applyCurrentSize()
+        rebuildMenuStates()
+    }
+
+    /// 应用当前 size 到窗口（调整 frame 大小，保持左上角位置）
+    private func applyCurrentSize() {
+        guard let window else { return }
+        let newSize = currentSize().NSSize
+        var frame = window.frame
+        // 保持顶部对齐（macOS 坐标系 y 从底部算）
+        frame.origin.y = frame.maxY - newSize.height
+        frame.size = newSize
+        window.setFrame(frame, display: true, animate: true)
+        renderContent()
+    }
+
+    @objc private func setOpacity(_ sender: NSMenuItem) {
+        guard let v = sender.representedObject as? Double else { return }
+        UserDefaults.standard.set(v, forKey: "floating_widget_opacity")
+        // 通知正在显示的视图刷新
+        NotificationCenter.default.post(name: .floatingWidgetOpacityChanged, object: v)
+        rebuildMenuStates()
+    }
+
+    /// 构建右键菜单
+    private func buildMenu(size: Size) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
         for s in Size.allCases {
@@ -122,7 +212,6 @@ final class FloatingWidgetWindow {
             menu.addItem(item)
         }
         menu.addItem(.separator())
-        // 透明度子菜单
         let opacityItem = NSMenuItem(title: "背景不透明度", action: nil, keyEquivalent: "")
         let opacityMenu = NSMenu()
         for pct in [60, 75, 85, 92, 100] {
@@ -143,42 +232,7 @@ final class FloatingWidgetWindow {
         let close = NSMenuItem(title: "关闭小窗", action: #selector(menuClose), keyEquivalent: "")
         close.target = self
         menu.addItem(close)
-        panel.menu = menu
-
-        window = panel
-        renderContent()
-    }
-
-    // MARK: - Render
-
-    private func renderContent() {
-        guard let window, let viewModel else { return }
-        let size = currentSize()
-        let view = FloatingWidgetView(viewModel: viewModel, size: size)
-            .environment(\.floatingWidgetSize, size)
-        let hosting = NSHostingController(rootView: AnyView(view))
-        window.contentViewController = hosting
-    }
-
-    // MARK: - Menu Actions
-
-    @objc private func resizeTo(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String, let s = Size(rawValue: raw) else { return }
-        UserDefaults.standard.set(s.rawValue, forKey: "floating_widget_size")
-        // 重建窗口（简单可靠，避免手工调整 contentView）
-        saveFrame()
-        window?.orderOut(nil)
-        window = nil
-        if let viewModel { show(viewModel: viewModel) }
-        rebuildMenuStates()
-    }
-
-    @objc private func setOpacity(_ sender: NSMenuItem) {
-        guard let v = sender.representedObject as? Double else { return }
-        UserDefaults.standard.set(v, forKey: "floating_widget_opacity")
-        // 通知正在显示的视图刷新
-        NotificationCenter.default.post(name: .floatingWidgetOpacityChanged, object: v)
-        rebuildMenuStates()
+        return menu
     }
 
     @objc private func openMainPanel() {
@@ -257,6 +311,31 @@ final class FloatingWidgetWindow {
     }
 }
 
+// MARK: - Right Click Menu View
+//
+// borderless NSPanel 默认不响应 panel.menu。
+// 用 NSView 子类重写 rightMouseDown，手动弹出菜单 + 接管 SwiftUI 内容。
+
+private final class RightClickMenuView: NSView {
+    override var isFlipped: Bool { false }
+    override var acceptsFirstResponder: Bool { true }
+
+    override func rightMouseDown(with event: NSEvent) {
+        if let menu = self.menu {
+            menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        } else {
+            super.rightMouseDown(with: event)
+        }
+    }
+
+    // 让 contentView 自动撑满 panel
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        autoresizingMask = [.width, .height]
+        wantsLayer = true
+    }
+}
+
 // MARK: - Widget Panel (支持 nonactivating)
 
 private final class WidgetPanel: NSPanel {
@@ -264,6 +343,16 @@ private final class WidgetPanel: NSPanel {
     override var canBecomeMain: Bool { false }
     // 不抢焦点（点击小窗不会让其他 App 失活）
     override var acceptsFirstResponder: Bool { false }
+
+    override var contentView: NSView? {
+        didSet {
+            // contentView 默认带白色背景，设为透明 + 圆角，避免四个角露出矩形尖角
+            contentView?.wantsLayer = true
+            contentView?.layer?.backgroundColor = .clear
+            contentView?.layer?.cornerRadius = 16
+            contentView?.layer?.masksToBounds = true
+        }
+    }
 }
 
 // MARK: - Size Environment Key

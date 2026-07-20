@@ -78,6 +78,22 @@ struct SettingsView: View {
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
+
+                Divider().opacity(0.3)
+
+                HStack {
+                    Button("显示桌面小窗") {
+                        FloatingWidgetWindow.shared.show(viewModel: viewModel)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.brand)
+
+                    Button("隐藏桌面小窗") {
+                        FloatingWidgetWindow.shared.hide()
+                    }
+                    .buttonStyle(.bordered)
+                    Spacer()
+                }
             }
         }
     }

@@ -33,6 +33,11 @@ final class MenuBarManager: NSObject {
 
     func bootstrap() {
         viewModel.bootstrap()
+        // 启动后立即显示桌面浮动小窗（用户不用手动触发）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self else { return }
+            FloatingWidgetWindow.shared.show(viewModel: self.viewModel)
+        }
     }
 
     // MARK: - Status Item
