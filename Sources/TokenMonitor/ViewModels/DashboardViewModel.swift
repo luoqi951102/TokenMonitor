@@ -126,6 +126,9 @@ final class DashboardViewModel: ObservableObject {
     }
 
     // MARK: - Manual Sync
+    //
+    // sandbox=true 下无法 spawn cc-use，manualSync 只重新读 DB + 刷新视图。
+    // 实际数据同步由用户在终端运行 `cc-usage sync` 完成，或通过 launchd 定时跑。
 
     func manualSync() async {
         await syncRunner.syncNow()

@@ -19,21 +19,34 @@ import SQLite3
 
 final class UsageDB {
     private var handle: OpaquePointer?
+    private var securityScopedURL: URL?
     let path: String
 
     init?(path: String) {
         self.path = path
-        guard FileManager.default.fileExists(atPath: path) else { return nil }
+
+        // sandbox=true 下：优先用 security-scoped bookmark 授权的 URL
+        // sandbox=false 下：bookmark 也没有，直接用路径
+        let resolvedPath: String
+        if let bookmarkURL = BookmarkStore.shared.resolve(.ccusageDB) {
+            securityScopedURL = bookmarkURL
+            resolvedPath = bookmarkURL.path
+        } else {
+            resolvedPath = path
+        }
+
+        guard FileManager.default.fileExists(atPath: resolvedPath) else {
+            securityScopedURL.map { BookmarkStore.shared.release($0) }
+            return nil
+        }
 
         // 两级降级：immutable=1 失败则 mode=ro，避免锁住正在写入的进程
-        // （与 token-count ccusage/db.py sync_zcode 的策略一致）
         let candidates = [
-            "file:\(path)?immutable=1",
-            "file:\(path)?mode=ro",
+            "file:\(resolvedPath)?immutable=1",
+            "file:\(resolvedPath)?mode=ro",
         ]
         for url in candidates {
             var db: OpaquePointer?
-            // SQLITE_OPEN_URI 允许解析 ?mode=ro / ?immutable=1
             let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_URI
             if sqlite3_open_v2(url, &db, flags, nil) == SQLITE_OK {
                 self.handle = db
@@ -41,11 +54,13 @@ final class UsageDB {
             }
             sqlite3_close(db)
         }
+        securityScopedURL.map { BookmarkStore.shared.release($0) }
         return nil
     }
 
     deinit {
         if let handle { sqlite3_close(handle) }
+        if let url = securityScopedURL { BookmarkStore.shared.release(url) }
     }
 
     var isOpen: Bool { handle != nil }

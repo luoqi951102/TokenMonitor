@@ -16,15 +16,28 @@ import SQLite3
 
 final class ZCodeUsageDB {
     private var handle: OpaquePointer?
+    private var securityScopedURL: URL?
     let path: String
 
     init?(path: String) {
         self.path = path
-        guard FileManager.default.fileExists(atPath: path) else { return nil }
+
+        let resolvedPath: String
+        if let bookmarkURL = BookmarkStore.shared.resolve(.zcodeDB) {
+            securityScopedURL = bookmarkURL
+            resolvedPath = bookmarkURL.path
+        } else {
+            resolvedPath = path
+        }
+
+        guard FileManager.default.fileExists(atPath: resolvedPath) else {
+            securityScopedURL.map { BookmarkStore.shared.release($0) }
+            return nil
+        }
 
         let candidates = [
-            "file:\(path)?immutable=1",
-            "file:\(path)?mode=ro",
+            "file:\(resolvedPath)?immutable=1",
+            "file:\(resolvedPath)?mode=ro",
         ]
         for url in candidates {
             var db: OpaquePointer?
@@ -35,11 +48,13 @@ final class ZCodeUsageDB {
             }
             sqlite3_close(db)
         }
+        securityScopedURL.map { BookmarkStore.shared.release($0) }
         return nil
     }
 
     deinit {
         if let handle { sqlite3_close(handle) }
+        if let url = securityScopedURL { BookmarkStore.shared.release(url) }
     }
 
     var isOpen: Bool { handle != nil }

@@ -1,0 +1,121 @@
+name: TokenMonitor
+options:
+  bundleIdPrefix: com.luoqi.tokenmonitor
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+  groupSortPosition: top
+
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: "N5YV5FV235"
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: "NO"
+
+targets:
+
+  # ─────────────────────────────────────────────────────────
+  # 主 App（菜单栏 + 浮动小窗，无 sandbox 以读 ~/.claude）
+  # ─────────────────────────────────────────────────────────
+  TokenMonitor:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/TokenMonitor
+        excludes:
+          - "Info.plist"
+    resources:
+      - path: Resources/Assets.xcassets
+      - path: Resources/AppIcon.icns
+        optional: true
+    info:
+      path: Sources/TokenMonitor/Info.plist
+      properties:
+        CFBundleDisplayName: Token Monitor
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSUIElement: true
+        NSHighResolutionCapable: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.luoqi.tokenmonitor
+            CFBundleURLSchemes:
+              - tokenmonitor
+    entitlements:
+      path: TokenMonitor.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.bookmarks.app: true
+        com.apple.security.files.user-selected.read-only: true
+        com.apple.security.application-groups:
+          - N5YV5FV235.group.com.luoqi.tokenmonitor
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.luoqi.tokenmonitor
+        PRODUCT_NAME: TokenMonitor
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: YES
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+        # 链接 SQLite3
+        OTHER_LDFLAGS: "-lsqlite3 $(inherited)"
+    dependencies:
+      - target: WidgetSupport
+        embed: true
+        codeSign: true
+
+  # ─────────────────────────────────────────────────────────
+  # Widget Extension（必须 sandbox）
+  # ─────────────────────────────────────────────────────────
+  WidgetSupport:
+    type: app-extension
+    platform: macOS
+    productType: com.apple.product-type.app-extension
+    sources:
+      - path: Sources/WidgetSupport
+        excludes:
+          - "Info.plist"
+    resources:
+      - path: Resources/Assets.xcassets
+    info:
+      path: Sources/WidgetSupport/Info.plist
+      properties:
+        CFBundleDisplayName: Token Monitor Widget
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSMinimumSystemVersion: "14.0"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+          NSExtensionAttributes:
+            NSExtensionPointVersion: "3.0"
+    entitlements:
+      path: WidgetSupport.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups:
+          - N5YV5FV235.group.com.luoqi.tokenmonitor
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.luoqi.tokenmonitor.widget
+        PRODUCT_NAME: WidgetSupport
+        SKIP_INSTALL: YES
+        ENABLE_APP_SANDBOX: YES
+        ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME: WidgetBackground
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../../../../Frameworks"
+        OTHER_LDFLAGS: "$(inherited)"
+
+schemes:
+  TokenMonitor:
+    build:
+      targets:
+        TokenMonitor: all
+        WidgetSupport: all
+    run:
+      config: Debug
+    archive:
+      config: Release

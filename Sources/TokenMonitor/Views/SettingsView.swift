@@ -35,63 +35,48 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var syncSection: some View {
-        card(title: "同步", icon: "arrow.triangle.2.circlepath") {
+        card(title: "数据同步", icon: "arrow.triangle.2.circlepath") {
             VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("cc-usage 可执行文件")
-                        .font(.caption.weight(.medium))
-                    Spacer()
-                    if viewModel.syncRunner.isAvailable {
-                        Label("可用", systemImage: "checkmark.circle.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.green)
-                    } else {
-                        Label("未找到", systemImage: "xmark.circle.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.orange)
-                    }
-                }
-
-                TextField("cc-usage 路径", text: $viewModel.syncRunner.ccUsageOverride)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(.caption, design: .monospaced))
-
-                if let path = viewModel.syncRunner.resolvedCCUsagePath {
-                    Text("当前使用：\(path)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-
-                Picker("刷新间隔", selection: $viewModel.syncRunner.intervalMinutes) {
-                    Text("5 分钟").tag(5)
-                    Text("10 分钟").tag(10)
-                    Text("30 分钟").tag(30)
-                    Text("60 分钟").tag(60)
-                }
-                .pickerStyle(.menu)
+                Text("App 在沙盒中运行，无法直接调用 cc-use。请在终端手动执行同步，或安装 launchd 定时任务自动同步。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
 
                 HStack {
-                    Button("立即同步") {
-                        Task { await viewModel.manualSync() }
+                    Button("在终端运行 sync") {
+                        viewModel.syncRunner.openInTerminal()
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(Theme.brand)
-                    .disabled(viewModel.syncRunner.isSyncing || !viewModel.syncRunner.isAvailable)
 
-                    if viewModel.syncRunner.isSyncing {
-                        ProgressView().scaleEffect(0.7)
-                        Text("同步中…").font(.caption).foregroundStyle(.secondary)
+                    Button("刷新视图") {
+                        viewModel.openDB()
+                        viewModel.refresh()
+                        viewModel.pushWidgetSnapshot()
                     }
+                    .buttonStyle(.bordered)
                     Spacer()
                 }
 
-                if let err = viewModel.syncRunner.lastError {
-                    Text(err)
+                Divider().opacity(0.3)
+
+                HStack {
+                    Text("刷新间隔")
+                        .font(.caption.weight(.medium))
+                    Spacer()
+                    Picker("", selection: $viewModel.syncRunner.intervalMinutes) {
+                        Text("5 分钟").tag(5)
+                        Text("10 分钟").tag(10)
+                        Text("30 分钟").tag(30)
+                        Text("60 分钟").tag(60)
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                }
+
+                if let last = viewModel.syncRunner.lastSyncAt {
+                    Text("上次视图刷新：\(formatTime(last))")
                         .font(.caption2)
-                        .foregroundStyle(.red)
-                        .lineLimit(3)
+                        .foregroundStyle(.tertiary)
                 }
             }
         }
@@ -101,26 +86,129 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var databaseSection: some View {
-        card(title: "数据源", icon: "internaldrive") {
-            VStack(alignment: .leading, spacing: 8) {
-                row(label: "ccusage.db", value: UsageDBPath.ccusageDefault)
-                row(label: "ZCode db", value: UsageDBPath.zcodeDefault)
+        card(title: "数据源授权", icon: "internaldrive") {
+            VStack(alignment: .leading, spacing: 10) {
+                // 授权提示
+                Text("App 在沙盒中运行，需要授权访问以下文件。授权一次永久生效。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                // ccusage.db
+                bookmarkRow(
+                    label: "ccusage.db",
+                    recommendedPath: UsageDBPath.ccusageDefault,
+                    key: .ccusageDB,
+                    prompt: "选择 ccusage.db",
+                    allowedTypes: ["sqlite", "db"]
+                )
+
+                // ZCode db
+                bookmarkRow(
+                    label: "ZCode db.sqlite",
+                    recommendedPath: UsageDBPath.zcodeDefault,
+                    key: .zcodeDB,
+                    prompt: "选择 db.sqlite",
+                    allowedTypes: ["sqlite", "db"]
+                )
+
                 if let start = viewModel.dataSpan.start, let end = viewModel.dataSpan.end {
+                    Divider().opacity(0.3)
                     row(label: "数据范围", value: "\(start) ~ \(end)")
-                }
-                HStack {
-                    Button("打开 ccusage.db 所在目录") { revealDB() }
-                        .buttonStyle(.bordered)
-                        .font(.caption)
-                    Spacer()
+                    row(label: "记录数", value: "\(viewModel.totalMsgs + Int(viewModel.models.reduce(0) { $0 + $1.msgCount }))")
                 }
             }
         }
     }
 
+    /// 单行 bookmark 授权控件
+    private func bookmarkRow(
+        label: String,
+        recommendedPath: String,
+        key: BookmarkStore.Key,
+        prompt: String,
+        allowedTypes: [String]?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(label)
+                    .font(.caption.weight(.medium))
+                Spacer()
+                if BookmarkStore.shared.has(key) {
+                    Label("已授权", systemImage: "checkmark.circle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.green)
+                } else {
+                    Label("未授权", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+            }
+            HStack(spacing: 6) {
+                Text("建议路径：\(recommendedPath)")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+            }
+            HStack {
+                Button("选择文件…") {
+                    pickFile(label: label, key: key, prompt: prompt, allowedTypes: allowedTypes)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.brand)
+                .controlSize(.small)
+                .font(.caption)
+
+                if BookmarkStore.shared.has(key) {
+                    Button("清除") { BookmarkStore.shared.clear(key) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .font(.caption)
+                }
+                Spacer()
+            }
+        }
+    }
+
+    private func pickFile(label: String, key: BookmarkStore.Key, prompt: String, allowedTypes: [String]?) {
+        let panel = NSOpenPanel()
+        panel.title = prompt
+        panel.prompt = "授权"
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        if let types = allowedTypes {
+            panel.allowedFileTypes = types
+        }
+        // 默认打开推荐目录
+        let home = NSHomeDirectory()
+        let defaultPath: String
+        switch key {
+        case .ccusageDB: defaultPath = "\(home)/.claude"
+        case .zcodeDB: defaultPath = "\(home)/.zcode/cli/db"
+        case .ccUsageExe: defaultPath = "\(home)/.local/bin"
+        }
+        panel.directoryURL = URL(fileURLWithPath: defaultPath)
+
+        if panel.runModal() == .OK, let url = panel.url {
+                if BookmarkStore.shared.save(url, for: key) {
+                    // 触发 viewModel 重新打开 DB + 刷新 + 推送 widget
+                    viewModel.openDB()
+                    viewModel.refresh()
+                    viewModel.pushWidgetSnapshot()
+                }
+        }
+    }
+
     private func revealDB() {
-        let url = URL(fileURLWithPath: UsageDBPath.ccusageDefault)
-        NSWorkspace.shared.activateFileViewerSelecting([url])
+        if let url = BookmarkStore.shared.resolve(.ccusageDB) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+            BookmarkStore.shared.release(url)
+        } else {
+            let url = URL(fileURLWithPath: UsageDBPath.ccusageDefault)
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
     }
 
     // MARK: - Defaults
@@ -192,5 +280,12 @@ struct SettingsView: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
+    }
+
+    private func formatTime(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "HH:mm:ss"
+        return f.string(from: date)
     }
 }

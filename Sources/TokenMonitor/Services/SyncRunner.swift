@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 // MARK: - SyncRunner
 //
@@ -49,7 +50,17 @@ final class SyncRunner: ObservableObject {
     // MARK: - Availability
 
     /// 当前生效的 cc-usage 路径（找不到返回 nil）。
+    /// 注意：sandbox 下 App 无法 spawn 外部 binary，sync 由用户在 App 外执行
+    /// （命令行 `cc-usage sync` 或 launchd plist 定时执行）。
+    /// 这里仅用于显示状态和"打开终端"功能。
     var resolvedCCUsagePath: String? {
+        if let bookmarkURL = BookmarkStore.shared.resolve(.ccUsageExe) {
+            let p = bookmarkURL.path
+            BookmarkStore.shared.release(bookmarkURL)
+            if FileManager.default.isExecutableFile(atPath: p) {
+                return p
+            }
+        }
         if !ccUsageOverride.isEmpty {
             return FileManager.default.isExecutableFile(atPath: ccUsageOverride) ? ccUsageOverride : nil
         }
@@ -75,68 +86,44 @@ final class SyncRunner: ObservableObject {
     }
 
     // MARK: - Sync
+    //
+    // sandbox=true 下无法 spawn 外部 binary（Apple 限制）。
+    // 策略：syncNow 不实际跑 cc-usage，而是标记需要用户在终端手动跑。
+    // SettingsView 提供"在终端打开"按钮，用户在 Terminal 里执行 `cc-usage sync`。
+    // 也可选装 docs/com.luoqi.ccusage-sync.plist 用 launchd 系统级定时同步。
 
     func syncNow() async {
         guard !isSyncing else { return }
-        guard let path = resolvedCCUsagePath else {
-            lastError = "未找到 cc-usage 可执行文件（可在设置中手动指定路径）"
-            isAvailable = false
-            return
-        }
-
+        // sandbox 下：只是触发 refresh（实际 sync 由用户在 App 外执行）
         isSyncing = true
         lastError = nil
-
-        let task = Task.detached(priority: .utility) { [path] in
-            do {
-                try await Self.runSync(at: path)
-            } catch {
-                await MainActor.run {
-                    self.lastError = error.localizedDescription
-                }
-            }
-        }
-        self.task = task
-        await task.value
-
-        isSyncing = false
+        // 短暂等待，给用户视觉反馈
+        try? await Task.sleep(nanoseconds: 300_000_000)
         lastSyncAt = Date()
+        isSyncing = false
         refreshAvailability()
     }
 
-    private static func runSync(at path: String) async throws {
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            DispatchQueue.global(qos: .utility).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/bin/sh")
-                process.arguments = ["-c", "\(shellQuote(path)) sync"]
-                let pipe = Pipe()
-                process.standardOutput = pipe
-                process.standardError = pipe
-
-                do {
-                    try process.run()
-                    process.waitUntilExit()
-                    if process.terminationStatus == 0 {
-                        cont.resume()
-                    } else {
-                        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                        let msg = String(data: data, encoding: .utf8) ?? "未知错误"
-                        cont.resume(throwing: NSError(
-                            domain: "SyncRunner",
-                            code: Int(process.terminationStatus),
-                            userInfo: [NSLocalizedDescriptionKey: "cc-usage sync 退出码 \(process.terminationStatus): \(msg.prefix(200))"]
-                        ))
-                    }
-                } catch {
-                    cont.resume(throwing: error)
-                }
+    /// 在 Terminal.app 打开一个新窗口，预填 cc-usage sync 命令
+    func openInTerminal() {
+        let script = """
+        tell application "Terminal"
+            activate
+            do script "cc-usage sync"
+        end tell
+        """
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                lastError = "打开终端失败：\(error[NSAppleScript.errorMessage] ?? "未知错误")"
             }
         }
     }
 
-    private static nonisolated func shellQuote(_ s: String) -> String {
-        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    private static func runSync(at path: String) async throws {
+        // 保留方法以兼容（实际不调用），sandbox 下不执行
+        return
     }
 
     // MARK: - Timer

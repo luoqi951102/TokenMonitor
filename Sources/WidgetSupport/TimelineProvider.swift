@@ -61,16 +61,46 @@ struct WidgetEntry: TimelineEntry {
 
 struct Provider: TimelineProvider {
     private static let appGroup = "N5YV5FV235.group.com.luoqi.tokenmonitor"
-    private static let snapshotKey = "widget_snapshot"
+    private static let snapshotFilename = "widget_snapshot.json"
 
+    /// 从 App Group 容器目录读 JSON 文件（不用 UserDefaults，避免 sandbox 拒绝）
     private func loadSnapshot() -> WidgetSnapshot? {
-        guard let sharedDefaults = UserDefaults(suiteName: Self.appGroup),
-              let data = sharedDefaults.data(forKey: Self.snapshotKey) else {
+        let log = WidgetLogger.shared
+        log.append("loadSnapshot: begin")
+
+        guard let containerURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: Self.appGroup
+        ) else {
+            log.append("loadSnapshot: ❌ containerURL returned nil")
             return nil
         }
+        log.append("loadSnapshot: containerURL = \(containerURL.path)")
+
+        let fileURL = containerURL.appendingPathComponent(Self.snapshotFilename)
+        log.append("loadSnapshot: fileURL = \(fileURL.path)")
+
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            log.append("loadSnapshot: ❌ file not found")
+            return nil
+        }
+        log.append("loadSnapshot: file exists")
+
+        guard let data = try? Data(contentsOf: fileURL) else {
+            log.append("loadSnapshot: ❌ cannot read data")
+            return nil
+        }
+        log.append("loadSnapshot: read \(data.count) bytes")
+
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(WidgetSnapshot.self, from: data)
+        do {
+            let snap = try decoder.decode(WidgetSnapshot.self, from: data)
+            log.append("loadSnapshot: ✅ decoded, totalTokens=\(snap.totalTokens)")
+            return snap
+        } catch {
+            log.append("loadSnapshot: ❌ decode failed: \(error)")
+            return nil
+        }
     }
 
     func placeholder(in context: Context) -> WidgetEntry {
@@ -78,13 +108,43 @@ struct Provider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (WidgetEntry) -> Void) {
+        WidgetLogger.shared.append("getSnapshot called")
         completion(WidgetEntry(date: Date(), snapshot: loadSnapshot(), hasData: true))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WidgetEntry>) -> Void) {
-        let entry = WidgetEntry(date: Date(), snapshot: loadSnapshot(), hasData: true)
-        // App 通过 WidgetCenter.reloadTimelines 主动驱动刷新，fallback 1 小时
+        WidgetLogger.shared.append("getTimeline called")
+        let snap = loadSnapshot()
+        let entry = WidgetEntry(date: Date(), snapshot: snap, hasData: true)
         let nextRefresh = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date()
+        WidgetLogger.shared.append("getTimeline: returning timeline, hasSnapshot=\(snap != nil)")
         completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
+    }
+}
+
+/// Widget 端日志：写到 App Group 容器里的 widget_debug.log 文件
+/// （主 App 可以读，便于诊断 widget 加载流程）
+final class WidgetLogger {
+    static let shared = WidgetLogger()
+    private let appGroup = "N5YV5FV235.group.com.luoqi.tokenmonitor"
+    private let filename = "widget_debug.log"
+
+    func append(_ msg: String) {
+        guard let containerURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroup
+        ) else { return }
+        let url = containerURL.appendingPathComponent(filename)
+        let line = "\(ISO8601DateFormatter().string(from: Date())) \(msg)\n"
+        if let data = line.data(using: .utf8) {
+            if FileManager.default.fileExists(atPath: url.path) {
+                if let handle = try? FileHandle(forWritingTo: url) {
+                    defer { try? handle.close() }
+                    try? handle.seekToEnd()
+                    try? handle.write(contentsOf: data)
+                }
+            } else {
+                try? data.write(to: url)
+            }
+        }
     }
 }
