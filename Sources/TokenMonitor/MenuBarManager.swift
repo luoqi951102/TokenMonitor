@@ -56,9 +56,20 @@ final class MenuBarManager: NSObject {
         addStatusMenuItem(title: "立即同步", action: #selector(manualSync), keyEquivalent: "s")
         addStatusMenuItem(title: "刷新视图", action: #selector(manualRefresh), keyEquivalent: "r")
         statusMenu.addItem(.separator())
+        // 桌面浮动小窗切换（带状态显示）
+        let widgetItem = NSMenuItem(title: "显示桌面小窗", action: #selector(toggleFloatingWidget), keyEquivalent: "w")
+        widgetItem.target = self
+        widgetItem.isEnabled = true
+        widgetItem.tag = 100
+        statusMenu.addItem(widgetItem)
+        statusMenu.addItem(.separator())
         addStatusMenuItem(title: "设置…", action: #selector(openSettings), keyEquivalent: ",")
         statusMenu.addItem(.separator())
         addStatusMenuItem(title: "退出", action: #selector(quitApp), keyEquivalent: "q")
+    }
+
+    @objc private func toggleFloatingWidget() {
+        FloatingWidgetWindow.shared.toggle(viewModel: viewModel)
     }
 
     private func addStatusMenuItem(title: String, action: Selector, keyEquivalent: String) {
@@ -103,6 +114,10 @@ final class MenuBarManager: NSObject {
 
     private func showStatusMenu(button: NSStatusBarButton) {
         closePanel()
+        // 更新"桌面小窗"菜单项的状态文字
+        if let widgetItem = statusMenu.item(withTag: 100) {
+            widgetItem.title = FloatingWidgetWindow.shared.isVisible ? "隐藏桌面小窗" : "显示桌面小窗"
+        }
         statusItem.menu = statusMenu
         button.performClick(nil)
         statusItem.menu = nil
