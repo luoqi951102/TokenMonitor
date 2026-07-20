@@ -81,22 +81,45 @@ struct ToolCallView: View {
                     .padding(.vertical, 14)
             } else {
                 let maxTools = ranked.first?.toolCallCount ?? 1
-                ForEach(ranked.prefix(6)) { u in
+                // 表头
+                HStack(spacing: 8) {
+                    Text("模型")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 110, alignment: .leading)
+                    Text("工具调用")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity)
+                    Text("次数")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 44, alignment: .trailing)
+                    Text("次/消息")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 44, alignment: .trailing)
+                }
+                Divider()
+                ForEach(ranked.prefix(8)) { u in
                     HStack(spacing: 8) {
-                        Circle().fill(Theme.modelColor(u.model)).frame(width: 8, height: 8)
-                        Text(u.model)
-                            .font(.caption.weight(.medium))
-                            .frame(width: 100, alignment: .leading)
-                            .lineLimit(1)
+                        HStack(spacing: 6) {
+                            Circle().fill(Theme.modelColor(u.model)).frame(width: 8, height: 8)
+                            Text(u.model)
+                                .font(.caption.weight(.medium))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        .frame(width: 110, alignment: .leading)
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
                                 RoundedRectangle(cornerRadius: 3).fill(.quaternary.opacity(0.4))
                                 RoundedRectangle(cornerRadius: 3)
                                     .fill(Theme.tokenCacheRead.opacity(0.85))
-                                    .frame(width: geo.size.width * CGFloat(Double(u.toolCallCount) / Double(maxTools)))
+                                    .frame(width: max(4, geo.size.width * CGFloat(Double(u.toolCallCount) / Double(maxTools))))
                             }
                         }
-                        .frame(height: 8)
+                        .frame(height: 10)
                         Text("\(u.toolCallCount)")
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.secondary)
@@ -104,15 +127,14 @@ struct ToolCallView: View {
                         Text(String(format: "%.2f", u.toolCallsPerMsg))
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.tertiary)
-                            .frame(width: 36, alignment: .trailing)
+                            .frame(width: 44, alignment: .trailing)
                     }
-                    .frame(height: 18)
+                    .frame(height: 20)
                 }
-                HStack {
-                    Spacer()
-                    Text("（右列 = 每消息工具调用数）")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.quaternary)
+                if ranked.count > 8 {
+                    Text("+ 其余 \(ranked.count - 8) 个模型未展示")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
             }
         }
@@ -125,41 +147,87 @@ struct ToolCallView: View {
 
     private var trendCard: some View {
         let withTools = viewModel.daily.filter { $0.toolCalls > 0 }
+        // 区间密度自适应：range=all 时按周聚合避免柱过密
+        let display: [DailyTotal] = {
+            switch viewModel.range {
+            case .all:
+                // 按周聚合（每周 = 该周内每日 toolCalls 合并）
+                return aggregateWeekly(withTools)
+            default:
+                return Array(withTools.suffix(14))
+            }
+        }()
+
         return VStack(alignment: .leading, spacing: 8) {
             Text("工具调用趋势")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            if withTools.isEmpty {
+            if display.isEmpty {
                 Text("区间内无工具调用趋势数据")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 12)
             } else {
-                let maxTools = withTools.map(\.toolCalls).max() ?? 1
-                HStack(alignment: .bottom, spacing: 4) {
-                    ForEach(withTools.suffix(14)) { d in
-                        VStack(spacing: 3) {
-                            Text("\(d.toolCalls)")
-                                .font(.system(size: 8, design: .monospaced))
-                                .foregroundStyle(.secondary)
+                let maxTools = display.map(\.toolCalls).max() ?? 1
+                let spacing: CGFloat = display.count > 14 ? 2 : 4
+                HStack(alignment: .bottom, spacing: spacing) {
+                    ForEach(display) { d in
+                        VStack(spacing: 2) {
+                            if display.count <= 14 {
+                                Text("\(d.toolCalls)")
+                                    .font(.system(size: 8, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
                             RoundedRectangle(cornerRadius: 2)
-                                .fill(Theme.tokenCacheRead.opacity(0.8))
-                                .frame(width: 14, height: barHeight(d.toolCalls, max: maxTools))
-                            Text(String(d.date.suffix(5)))
-                                .font(.system(size: 8))
-                                .foregroundStyle(.tertiary)
+                                .fill(Theme.tokenCacheRead.opacity(0.85))
+                                .frame(height: barHeight(d.toolCalls, max: maxTools))
+                            if display.count <= 14 {
+                                Text(String(d.date.suffix(5)))
+                                    .font(.system(size: 8))
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
                         .frame(maxWidth: .infinity)
                     }
                 }
-                .frame(height: 70)
+                .frame(height: display.count > 14 ? 56 : 70)
             }
         }
         .padding(12)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    /// 按周聚合（周一为周首），用于 range=all
+    private func aggregateWeekly(_ daily: [DailyTotal]) -> [DailyTotal] {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = Aggregator.shanghai
+        cal.firstWeekday = 2
+
+        // (weekStartDate, [aggregated fields])
+        var buckets: [String: (tokens: Int, tools: Int, msgs: Int)] = [:]
+        var order: [String] = []
+        for d in daily {
+            guard let date = formatter.date(from: d.date) else { continue }
+            let comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
+            guard let weekStart = cal.date(from: comps) else { continue }
+            let key = formatter.string(from: weekStart)
+            if buckets[key] == nil { order.append(key) }
+            var b = buckets[key] ?? (0, 0, 0)
+            b.tokens += d.tokens
+            b.tools += d.toolCalls
+            b.msgs += d.msgs
+            buckets[key] = b
+        }
+        return order.sorted().map { key in
+            let b = buckets[key]!
+            return DailyTotal(date: key, tokens: b.tokens, toolCalls: b.tools, msgs: b.msgs)
+        }
     }
 
     private func barHeight(_ v: Int, max m: Int) -> CGFloat {

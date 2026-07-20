@@ -241,15 +241,17 @@ struct ContentView: View {
     // MARK: - Top Models
 
     private var topModelsCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("Top 模型")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("\(viewModel.models.count) 个模型")
+                Text("\(viewModel.models.count) 个模型 · 切到「模型」tab 看全部")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
 
             if viewModel.models.isEmpty {
@@ -260,7 +262,8 @@ struct ContentView: View {
                     .padding(.vertical, 16)
             } else {
                 let maxTotal = viewModel.models.first?.totalTokens ?? 1
-                ForEach(viewModel.topModels(5)) { usage in
+                // 总览只展示 Top 6，避免面板溢出；完整列表在「模型」tab
+                ForEach(viewModel.topModels(6)) { usage in
                     modelBar(usage, maxTotal: maxTotal)
                 }
             }
@@ -279,29 +282,41 @@ struct ContentView: View {
             Text(usage.model)
                 .font(.caption.weight(.medium))
                 .lineLimit(1)
-                .frame(width: 96, alignment: .leading)
+                .truncationMode(.middle)
+                .frame(width: 108, alignment: .leading)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(.quaternary.opacity(0.4))
                     RoundedRectangle(cornerRadius: 3)
-                        .fill(Theme.modelColor(usage.model).opacity(0.8))
-                        .frame(width: geo.size.width * pct)
+                        .fill(Theme.modelColor(usage.model).opacity(0.85))
+                        .frame(width: max(4, geo.size.width * pct))
                 }
             }
-            .frame(height: 8)
+            .frame(height: 10)
             Text(formatTokens(usage.totalTokens))
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.secondary)
                 .frame(width: 52, alignment: .trailing)
         }
-        .frame(height: 18)
+        .frame(height: 20)
     }
 
     // MARK: - Trend
 
     private var trendCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        // range=all 时区间可能跨数月，按天展示柱太密，最多展示最近 30 天
+        let displayData: [DailyTotal] = {
+            let cap: Int
+            switch viewModel.range {
+            case .today, .week: cap = 14
+            case .month: cap = 31
+            case .all: cap = 30
+            }
+            return Array(viewModel.daily.suffix(cap))
+        }()
+
+        return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("趋势")
                     .font(.caption.weight(.medium))
@@ -310,35 +325,45 @@ struct ContentView: View {
                 Text(viewModel.rangeLabel)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
 
-            if viewModel.daily.isEmpty {
+            if displayData.isEmpty {
                 Text("区间内无数据")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 12)
             } else {
-                let maxTokens = viewModel.daily.map(\.tokens).max() ?? 1
-                HStack(alignment: .bottom, spacing: 4) {
-                    ForEach(viewModel.daily.suffix(14)) { d in
-                        VStack(spacing: 3) {
-                            Text(formatTokens(d.tokens))
-                                .font(.system(size: 8, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.6)
+                let maxTokens = displayData.map(\.tokens).max() ?? 1
+                // 柱间距随密度自适应：柱少时间距大、柱多时紧凑
+                let spacing: CGFloat = displayData.count > 20 ? 1.5 : (displayData.count > 10 ? 3 : 5)
+                HStack(alignment: .bottom, spacing: spacing) {
+                    ForEach(displayData) { d in
+                        VStack(spacing: 2) {
+                            // 柱多时只显示部分柱顶数字，避免拥挤
+                            if displayData.count <= 14 {
+                                Text(formatTokens(d.tokens))
+                                    .font(.system(size: 8, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.6)
+                            }
                             RoundedRectangle(cornerRadius: 2)
                                 .fill(Theme.chartBar)
-                                .frame(width: 14, height: barHeight(d.tokens, max: maxTokens))
-                            Text(String(d.date.suffix(5)))
-                                .font(.system(size: 8))
-                                .foregroundStyle(.tertiary)
+                                .frame(height: barHeight(d.tokens, max: maxTokens))
+                            // 柱多时只显示首尾日期
+                            if displayData.count <= 14 {
+                                Text(String(d.date.suffix(5)))
+                                    .font(.system(size: 8))
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
                         .frame(maxWidth: .infinity)
                     }
                 }
-                .frame(height: 90)
+                .frame(height: displayData.count > 14 ? 60 : 90)
             }
         }
         .padding(12)
