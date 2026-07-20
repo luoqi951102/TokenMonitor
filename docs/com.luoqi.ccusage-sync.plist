@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  可选：用 launchd 系统级定时同步 cc-usage，独立于 App 运行。
+  适用于不想让 App 一直驻留，但仍希望 widget 数据保持新鲜的场景。
+
+  安装：
+    cp com.luoqi.ccusage-sync.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.luoqi.ccusage-sync.plist
+
+  卸载：
+    launchctl unload ~/Library/LaunchAgents/com.luoqi.ccusage-sync.plist
+    rm ~/Library/LaunchAgents/com.luoqi.ccusage-sync.plist
+
+  自定义：
+    - 修改 <string>~/.local/bin/cc-usage</string> 为你的 cc-usage 实际路径
+    - 修改 StartInterval（单位：秒，默认 600 = 10 分钟）
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.luoqi.ccusage-sync</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>~/.local/bin/cc-usage</string>
+        <string>sync</string>
+    </array>
+
+    <!-- 每 10 分钟跑一次 -->
+    <key>StartInterval</key>
+    <integer>600</integer>
+
+    <!-- 开机后 2 分钟也开始一次（防止错过登录时刻） -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- 错过的时机（休眠/关机）在唤醒后补跑 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/ccusage-sync.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/ccusage-sync.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+    </dict>
+</dict>
+</plist>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      关闭 App Sandbox。
+      原因：个人本地工具，需要直接读 ~/.claude/ccusage.db 和 ~/.zcode/cli/db/db.sqlite，
+      sandbox 默认禁止访问这两处路径（user-selected 只覆盖 NSOpenPanel 授权过的文件）。
+      副作用：在没有 Xcode .xcodeproj 的情况下本来也无法嵌入 widget extension，
+      所以关 sandbox 不会损失任何已有功能。
+      将来用 Xcode 打包嵌入 widget 时，需要重新打开 sandbox 并改成 NSOpenPanel 授权。
+    -->
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+
+    <!-- App Group 仍保留（即使 sandbox 关了，UserDefaults(suiteName:) 仍可用） -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>N5YV5FV235.group.com.luoqi.tokenmonitor</string>
+    </array>
+</dict>
+</plist>
+
