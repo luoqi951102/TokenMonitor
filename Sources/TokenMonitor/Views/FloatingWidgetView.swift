@@ -169,13 +169,14 @@ private struct CompactContent: View {
     }
 }
 
-// MARK: - Medium (280×196)
+// MARK: - Medium (320×260) - 扩容版，含 streak + 模型 + 项目
 
 private struct MediumContent: View {
     @ObservedObject var viewModel: DashboardViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Header + Range
             HStack(spacing: 6) {
                 Image(systemName: "chart.bar.xaxis")
                     .font(.system(size: 12, weight: .semibold))
@@ -188,49 +189,97 @@ private struct MediumContent: View {
             .padding(.horizontal, 14)
             .padding(.top, 12)
 
-            HStack(spacing: 14) {
+            // KPI 行 + streak 简版（火苗）
+            HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(formatTokens(viewModel.totalTokens))
-                        .font(.system(size: 24, weight: .heavy, design: .rounded))
+                        .font(.system(size: 22, weight: .heavy, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(Theme.brand)
                         .minimumScaleFactor(0.6)
                         .lineLimit(1)
                     Text("总 Token")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 4)
                 kpi("\(viewModel.totalMsgs)", "消息", Theme.tokenCacheWrite)
                 kpi("\(viewModel.totalToolCalls)", "工具", Theme.tokenCacheRead)
+                // streak 简版
+                VStack(spacing: 0) {
+                    Image(systemName: viewModel.streak.current > 0 ? "flame.fill" : "flame")
+                        .font(.system(size: 13))
+                        .foregroundStyle(viewModel.streak.current > 0 ? Color.orange : Color.gray.opacity(0.5))
+                    Text("\(viewModel.streak.current)")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(viewModel.streak.current > 0 ? Color.orange : Color.secondary)
+                    Text("天")
+                        .font(.system(size: 8))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(width: 38)
             }
             .padding(.horizontal, 14)
 
             Divider().opacity(0.4)
 
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Top 模型")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 14)
-                ForEach(viewModel.topModels(3)) { usage in
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(Theme.modelColor(usage.model))
-                            .frame(width: 7, height: 7)
-                        Text(usage.model)
-                            .font(.system(size: 11, weight: .medium))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer()
-                        Text(formatTokens(usage.totalTokens))
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(.primary)
+            // 双栏：Top 模型 + Top 项目
+            HStack(alignment: .top, spacing: 12) {
+                // 左：Top 模型
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Top 模型")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    ForEach(viewModel.topModels(3)) { usage in
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Theme.modelColor(usage.model))
+                                .frame(width: 6, height: 6)
+                            Text(usage.model)
+                                .font(.system(size: 9, weight: .medium))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer(minLength: 2)
+                            Text(formatTokens(usage.totalTokens))
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                    .padding(.horizontal, 14)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                // 右：Top 项目
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Top 项目")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    let projects = viewModel.topProjects(3)
+                    ForEach(projects) { p in
+                        HStack(spacing: 4) {
+                            Image(systemName: "folder.fill")
+                                .font(.system(size: 7))
+                                .foregroundStyle(Theme.tokenCacheWrite.opacity(0.8))
+                            Text(simplifyName(p.project))
+                                .font(.system(size: 9, weight: .medium))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer(minLength: 2)
+                            Text(formatTokens(p.tokens))
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    if projects.isEmpty {
+                        Text("无")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.bottom, 12)
+            .padding(.horizontal, 14)
+            .padding(.bottom, 10)
             Spacer(minLength: 0)
         }
     }
@@ -238,13 +287,23 @@ private struct MediumContent: View {
     private func kpi(_ v: String, _ label: String, _ color: Color) -> some View {
         VStack(alignment: .trailing, spacing: 1) {
             Text(v)
-                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .font(.system(size: 14, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(color)
             Text(label)
-                .font(.system(size: 10))
+                .font(.system(size: 9))
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// 简化项目名（取 ~/ 后的最后一段）
+    private func simplifyName(_ raw: String) -> String {
+        if raw == "~" { return "~" }
+        if raw.hasPrefix("~/") {
+            let parts = String(raw.dropFirst(2)).split(separator: "/")
+            if let last = parts.last { return String(last) }
+        }
+        return raw.count > 12 ? "..." + String(raw.suffix(10)) : raw
     }
 }
 
@@ -268,8 +327,8 @@ private struct LargeContent: View {
             .padding(.horizontal, 16)
             .padding(.top, 14)
 
-            // KPI
-            HStack(spacing: 14) {
+            // KPI + streak 简版
+            HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(formatTokens(viewModel.totalTokens))
                         .font(.system(size: 26, weight: .heavy, design: .rounded))
@@ -300,6 +359,20 @@ private struct LargeContent: View {
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                 }
+                // streak 火苗
+                VStack(spacing: 0) {
+                    Image(systemName: viewModel.streak.current > 0 ? "flame.fill" : "flame")
+                        .font(.system(size: 14))
+                        .foregroundStyle(viewModel.streak.current > 0 ? Color.orange : Color.gray.opacity(0.5))
+                    Text("\(viewModel.streak.current)")
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(viewModel.streak.current > 0 ? Color.orange : Color.secondary)
+                    Text("/ \(viewModel.streak.longest) 天")
+                        .font(.system(size: 8))
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(width: 44)
             }
             .padding(.horizontal, 16)
 
@@ -344,6 +417,49 @@ private struct LargeContent: View {
                             .frame(width: 50, alignment: .trailing)
                     }
                     .frame(height: 16)
+                    .padding(.horizontal, 16)
+                }
+            }
+
+            // Top 项目
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Top 项目")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 16)
+                let projects = viewModel.topProjects(3)
+                let maxProjTokens = projects.first?.tokens ?? 1
+                ForEach(projects) { p in
+                    HStack(spacing: 6) {
+                        Image(systemName: "folder.fill")
+                            .font(.system(size: 8))
+                            .foregroundStyle(Theme.tokenCacheWrite.opacity(0.8))
+                        Text(p.project)
+                            .font(.system(size: 10, weight: .medium))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(width: 130, alignment: .leading)
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(.quaternary.opacity(0.4))
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Theme.tokenCacheWrite, Theme.tokenCacheRead],
+                                            startPoint: .leading, endPoint: .trailing
+                                        ).opacity(0.85)
+                                    )
+                                    .frame(width: max(2, geo.size.width * CGFloat(Double(p.tokens) / Double(maxProjTokens))))
+                            }
+                        }
+                        .frame(height: 6)
+                        Text(formatTokens(p.tokens))
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.primary)
+                            .frame(width: 46, alignment: .trailing)
+                    }
+                    .frame(height: 14)
                     .padding(.horizontal, 16)
                 }
             }
