@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"?>
 <!--
-  可选：用 launchd 系统级定时同步 cc-usage，独立于 App 运行。
-  适用于不想让 App 一直驻留，但仍希望 widget 数据保持新鲜的场景。
+  launchd 定时同步 cc-usage 数据
+  每 10 分钟跑一次 cc-usage sync，把 Claude + ZCode 日志同步到 ccusage.db
+  （sandbox 下的 TokenMonitor App 无法 spawn 外部进程，所以走 launchd）
 
   安装：
     cp com.luoqi.ccusage-sync.plist ~/Library/LaunchAgents/
@@ -12,9 +13,8 @@
     launchctl unload ~/Library/LaunchAgents/com.luoqi.ccusage-sync.plist
     rm ~/Library/LaunchAgents/com.luoqi.ccusage-sync.plist
 
-  自定义：
-    - 修改 <string>~/.local/bin/cc-usage</string> 为你的 cc-usage 实际路径
-    - 修改 StartInterval（单位：秒，默认 600 = 10 分钟）
+  改间隔：修改 StartInterval（秒）
+  改路径：修改 ProgramArguments 里的 cc-usage 绝对路径
 -->
 <plist version="1.0">
 <dict>
@@ -23,7 +23,7 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>~/.local/bin/cc-usage</string>
+        <string>/Users/luoqi/.local/bin/cc-usage</string>
         <string>sync</string>
     </array>
 
@@ -31,16 +31,9 @@
     <key>StartInterval</key>
     <integer>600</integer>
 
-    <!-- 开机后 2 分钟也开始一次（防止错过登录时刻） -->
+    <!-- 加载时立即跑一次 -->
     <key>RunAtLoad</key>
-    <false/>
-
-    <!-- 错过的时机（休眠/关机）在唤醒后补跑 -->
-    <key>StartCalendarInterval</key>
-    <dict>
-        <key>Minute</key>
-        <integer>0</integer>
-    </dict>
+    <true/>
 
     <key>StandardOutPath</key>
     <string>/tmp/ccusage-sync.log</string>
@@ -50,7 +43,16 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/Users/luoqi</string>
+    </dict>
+
+    <!-- 错过后补跑（休眠唤醒后立即跑）-->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Minute</key>
+        <integer>0</integer>
     </dict>
 </dict>
 </plist>
