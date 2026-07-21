@@ -72,12 +72,12 @@ struct ProjectRankingView: View {
                 .foregroundStyle(rankColor)
                 .frame(width: 22, alignment: .center)
 
-            // 项目图标 + 名字
+            // 项目图标 + 名字（只显示最后一层目录名）
             HStack(spacing: 5) {
                 Image(systemName: "folder.fill")
                     .font(.system(size: 9))
                     .foregroundStyle(Theme.tokenCacheWrite.opacity(0.8))
-                Text(displayName(p.project))
+                Text(lastPathComponent(p.project))
                     .font(.caption.weight(.medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -113,21 +113,5 @@ struct ProjectRankingView: View {
             .frame(width: 50, alignment: .trailing)
         }
         .frame(height: 20)
-    }
-
-    /// 简化项目名显示：~ 后的最后一段路径（如果太长）
-    private func displayName(_ raw: String) -> String {
-        if raw == "(unknown)" { return "(unknown)" }
-        if raw == "~" { return "~（家目录）" }
-        // 取 ~ 后的部分，再取最后一段
-        if raw.hasPrefix("~/") {
-            let parts = String(raw.dropFirst(2)).split(separator: "/")
-            if let last = parts.last { return "~/" + String(last) }
-        }
-        // 截断长路径
-        if raw.count > 30 {
-            return "..." + String(raw.suffix(27))
-        }
-        return raw
     }
 }

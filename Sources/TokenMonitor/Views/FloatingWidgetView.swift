@@ -260,7 +260,7 @@ private struct MediumContent: View {
                             Image(systemName: "folder.fill")
                                 .font(.system(size: 7))
                                 .foregroundStyle(Theme.tokenCacheWrite.opacity(0.8))
-                            Text(simplifyName(p.project))
+                            Text(lastPathComponent(p.project))
                                 .font(.system(size: 9, weight: .medium))
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -294,16 +294,6 @@ private struct MediumContent: View {
                 .font(.system(size: 9))
                 .foregroundStyle(.secondary)
         }
-    }
-
-    /// 简化项目名（取 ~/ 后的最后一段）
-    private func simplifyName(_ raw: String) -> String {
-        if raw == "~" { return "~" }
-        if raw.hasPrefix("~/") {
-            let parts = String(raw.dropFirst(2)).split(separator: "/")
-            if let last = parts.last { return String(last) }
-        }
-        return raw.count > 12 ? "..." + String(raw.suffix(10)) : raw
     }
 }
 
@@ -434,7 +424,7 @@ private struct LargeContent: View {
                         Image(systemName: "folder.fill")
                             .font(.system(size: 8))
                             .foregroundStyle(Theme.tokenCacheWrite.opacity(0.8))
-                        Text(p.project)
+                        Text(lastPathComponent(p.project))
                             .font(.system(size: 10, weight: .medium))
                             .lineLimit(1)
                             .truncationMode(.middle)

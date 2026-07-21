@@ -128,3 +128,27 @@ func formatTokens(_ tokens: Int) -> String {
     }
     return "\(tokens)"
 }
+
+/// 项目名简化：只取最后一层目录名。
+/// 处理三种格式：
+///   - "~/work/future/token-usage-tool" → "token-usage-tool"
+///   - "-Users-luoqi-work-token-count"  → "token-count"（Claude session 路径格式）
+///   - "/Users/luoqi/foo/bar"           → "bar"
+///   - "~"                              → "~"
+///   - "(unknown)" / 空                 → "(unknown)"
+func lastPathComponent(_ raw: String) -> String {
+    if raw.isEmpty || raw == "(unknown)" { return "(unknown)" }
+    if raw == "~" { return "~" }
+
+    // Claude session 风格：-Users-luoqi-xxx-yyy（连字符分隔）
+    if raw.hasPrefix("-") && !raw.contains("/") {
+        let parts = raw.split(separator: "-").map(String.init)
+        // 过滤掉 Users/luoqi 等已知前缀段，取最后一个有意义的段
+        let meaningful = parts.filter { !$0.isEmpty }
+        return meaningful.last ?? raw
+    }
+
+    // 标准路径：取最后一段
+    let parts = raw.split(separator: "/").map(String.init)
+    return parts.last ?? raw
+}
