@@ -100,7 +100,7 @@ private struct RangeSwitcher: View {
                                 if isSelected {
                                     RoundedRectangle(cornerRadius: 5)
                                         .fill(Theme.brand)
-                                        .matchedGeometryEffect(id: "selectedBg", in: ns)
+                                        .matchedGeometryEffect(id: "rangeBg", in: ns)
                                 }
                             }
                         )
@@ -117,6 +117,67 @@ private struct RangeSwitcher: View {
     }
 
     @Environment(\.colorScheme) private var colorSchemeLocal
+}
+
+// MARK: - Source Switcher（全部 / Claude / ZCode）
+
+private struct SourceSwitcher: View {
+    @ObservedObject var viewModel: DashboardViewModel
+    @Namespace private var ns
+
+    private let options: [(value: String, label: String)] = [
+        ("all", "全部"), ("claude", "Claude"), ("zcode", "ZCode")
+    ]
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(options, id: \.value) { opt in
+                let isSelected = viewModel.source == opt.value
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        viewModel.source = opt.value
+                    }
+                }) {
+                    Text(opt.label)
+                        .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+                        .foregroundStyle(isSelected ? Color.white : .secondary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(
+                            ZStack {
+                                if isSelected {
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .fill(Theme.brandDark)
+                                        .matchedGeometryEffect(id: "sourceBg", in: ns)
+                                }
+                            }
+                        )
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+            }
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(Color.black.opacity(colorSchemeLocal == .dark ? 0.3 : 0.06))
+        )
+    }
+
+    @Environment(\.colorScheme) private var colorSchemeLocal
+}
+
+/// 浮动小窗的筛选条：range + source 两个 Switcher 横排，中间细分隔
+struct FloatingFilterBar: View {
+    @ObservedObject var viewModel: DashboardViewModel
+
+    var body: some View {
+        HStack(spacing: 6) {
+            RangeSwitcher(viewModel: viewModel)
+            Divider().frame(height: 16).opacity(0.3)
+            SourceSwitcher(viewModel: viewModel)
+        }
+    }
 }
 
 // MARK: - Compact (180×96) — 比之前稍高，给 range 留位置
@@ -176,7 +237,7 @@ private struct MediumContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Header + Range
+            // Header
             HStack(spacing: 6) {
                 Image(systemName: "chart.bar.xaxis")
                     .font(.system(size: 12, weight: .semibold))
@@ -184,10 +245,13 @@ private struct MediumContent: View {
                 Text("Token Monitor")
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
-                RangeSwitcher(viewModel: viewModel)
             }
             .padding(.horizontal, 14)
             .padding(.top, 12)
+
+            // 筛选条：range + source
+            FloatingFilterBar(viewModel: viewModel)
+                .padding(.horizontal, 14)
 
             // KPI 行 + streak 简版（火苗）
             HStack(spacing: 10) {
@@ -312,10 +376,13 @@ private struct LargeContent: View {
                 Text("Token Monitor")
                     .font(.system(size: 14, weight: .semibold))
                 Spacer()
-                RangeSwitcher(viewModel: viewModel)
             }
             .padding(.horizontal, 16)
             .padding(.top, 14)
+
+            // 筛选条：range + source
+            FloatingFilterBar(viewModel: viewModel)
+                .padding(.horizontal, 16)
 
             // KPI + streak 简版
             HStack(spacing: 12) {
