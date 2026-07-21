@@ -175,12 +175,17 @@ final class FloatingWidgetWindow {
     @objc private func resizeTo(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let s = Size(rawValue: raw) else { return }
         UserDefaults.standard.set(s.rawValue, forKey: "floating_widget_size")
-        // 直接调整窗口大小 + 重新渲染（不重建窗口，避免菜单 target 失效）
-        applyCurrentSize()
-        rebuildMenuStates()
+        // 包 withAnimation 让 SwiftUI content 的 transition（opacity + scale）生效
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.applyCurrentSize()
+            self.rebuildMenuStates()
+        }
     }
 
     /// 应用当前 size 到窗口（调整 frame 大小，保持左上角位置）
+    /// 注意：用 animate: false，避免窗口动画+内容重渲染叠加导致的"回勾"。
+    /// 内容切换的丝滑感由 FloatingWidgetView 里的 transition 负责。
     private func applyCurrentSize() {
         guard let window else { return }
         let newSize = currentSize().NSSize
@@ -188,7 +193,8 @@ final class FloatingWidgetWindow {
         // 保持顶部对齐（macOS 坐标系 y 从底部算）
         frame.origin.y = frame.maxY - newSize.height
         frame.size = newSize
-        window.setFrame(frame, display: true, animate: true)
+        // 禁用动画，立即应用（避免窗口边框动画 + 内容动画叠加闪烁）
+        window.setFrame(frame, display: true, animate: false)
         renderContent()
     }
 

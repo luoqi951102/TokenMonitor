@@ -63,11 +63,15 @@ struct FloatingWidgetView: View {
 
     @ViewBuilder
     private var content: some View {
-        switch size {
-        case .compact:  CompactContent(viewModel: viewModel)
-        case .medium:   MediumContent(viewModel: viewModel)
-        case .large:    LargeContent(viewModel: viewModel)
+        Group {
+            switch size {
+            case .compact:  CompactContent(viewModel: viewModel)
+            case .medium:   MediumContent(viewModel: viewModel)
+            case .large:    LargeContent(viewModel: viewModel)
+            }
         }
+        .id(size)  // 让 size 切换时整个内容重新创建（配合 transition）
+        .transition(.opacity.combined(with: .scale(scale: 0.96)))
     }
 }
 
@@ -75,22 +79,34 @@ struct FloatingWidgetView: View {
 
 private struct RangeSwitcher: View {
     @ObservedObject var viewModel: DashboardViewModel
+    @Namespace private var ns
 
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 2) {
             ForEach(UsageRange.allCases, id: \.self) { r in
-                Button(action: { viewModel.range = r }) {
+                let isSelected = viewModel.range == r
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        viewModel.range = r
+                    }
+                }) {
                     Text(r.displayName)
-                        .font(.system(size: 10, weight: viewModel.range == r ? .bold : .medium))
-                        .foregroundStyle(viewModel.range == r ? Color.white : .secondary)
-                        .padding(.horizontal, 7)
+                        .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+                        .foregroundStyle(isSelected ? Color.white : .secondary)
+                        .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(
-                            RoundedRectangle(cornerRadius: 5)
-                                .fill(viewModel.range == r ? Theme.brand : Color.clear)
+                            ZStack {
+                                if isSelected {
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .fill(Theme.brand)
+                                        .matchedGeometryEffect(id: "selectedBg", in: ns)
+                                }
+                            }
                         )
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
             }
         }
         .padding(2)
