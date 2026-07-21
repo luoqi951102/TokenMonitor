@@ -2,11 +2,28 @@
 .build/
 .swiftpm/
 Packages/
-*.swp
-*.swo
+Package.resolved
 
 # ZCode agent plans/state
 .zcode/
+
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+DerivedData/
+*.xcuserstate
+
+# Build artifacts（由 build.sh 生成）
+*.app
+*.appex
+*.dmg
+*.xcarchive
+dmg-staging/
+release/
+dist/
+build/
+*.log
 
 # Xcode
 *.xcodeproj/
