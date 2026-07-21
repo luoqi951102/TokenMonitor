@@ -166,6 +166,13 @@ final class DashboardViewModel: ObservableObject {
         Array(models.prefix(n))
     }
 
+    /// 当前 range + source 下的 Top N 项目（按 context tokens）
+    func topProjects(_ n: Int = 5) -> [Aggregator.ProjectStat] {
+        guard let aggregator else { return [] }
+        let r = aggregator.resolveRange(range)
+        return Array(aggregator.activeProjects(in: r, sourceFilter: source, limit: n).prefix(n))
+    }
+
     /// 来源占比
     var sourceSplit: Aggregator.SourceSplit? {
         guard let aggregator else { return nil }

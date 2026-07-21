@@ -100,7 +100,11 @@ struct ContentView: View {
     private var overviewTab: some View {
         VStack(alignment: .leading, spacing: 10) {
             kpiRow
+            // streak（跨 range 不变，永远显示当前状态）
+            StreakCard(streak: viewModel.streak)
             topModelsCard
+            // 项目维度 Top 5
+            ProjectRankingView(projects: viewModel.topProjects(5))
             trendCard
         }
     }

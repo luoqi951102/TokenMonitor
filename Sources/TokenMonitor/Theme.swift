@@ -8,7 +8,7 @@ import SwiftUI
 enum Theme {
     static let panelWidth: CGFloat = 360
     static let panelHeight: CGFloat = 500
-    static let panelDashboardHeight: CGFloat = 580
+    static let panelDashboardHeight: CGFloat = 620
     static let panelEmptyHeight: CGFloat = 300
     static let panelCornerRadius: CGFloat = 22
     static let panelTopGap: CGFloat = 12

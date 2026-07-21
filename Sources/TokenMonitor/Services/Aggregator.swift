@@ -353,6 +353,74 @@ final class Aggregator {
         return (start, end)
     }
 
+    // MARK: - Active Projects
+    //
+    // 按 cwd 维度聚合：看用户在哪些项目里用 LLM 多。
+    // 路径转 ~ 格式（与 ccusage 报告一致），unknown 单独成项。
+
+    struct ProjectStat: Identifiable {
+        var id: String { project }
+        let project: String
+        let tokens: Int
+        let msgs: Int
+        let rows: Int
+    }
+
+    func activeProjects(in range: DateRange, sourceFilter: String = "all", limit: Int = 10) -> [ProjectStat] {
+        let sql = """
+            SELECT project,
+                   COALESCE(SUM(total_context + output_tokens), 0),
+                   COALESCE(SUM(msg_count), 0),
+                   COUNT(*) AS rows
+            FROM usage
+            WHERE local_date BETWEEN ? AND ?
+              AND (source = ? OR ? = 'all')
+            GROUP BY project
+            ORDER BY SUM(total_context) DESC
+            LIMIT ?
+            """
+        var out: [ProjectStat] = []
+        db.query(sql, params: [range.start, range.end] + sourceParams(sourceFilter) + [limit]) { row in
+            let raw = row.string(at: 0)
+            let project = Self.displayProject(raw)
+            out.append(ProjectStat(
+                project: project,
+                tokens: row.int(at: 1),
+                msgs: row.int(at: 2),
+                rows: row.int(at: 3)
+            ))
+        }
+        // 合并相同 project（不同绝对路径可能映射到相同 ~ 路径）
+        var merged: [String: ProjectStat] = [:]
+        for p in out {
+            if var existing = merged[p.project] {
+                existing = ProjectStat(
+                    project: p.project,
+                    tokens: existing.tokens + p.tokens,
+                    msgs: existing.msgs + p.msgs,
+                    rows: existing.rows + p.rows
+                )
+                merged[p.project] = existing
+            } else {
+                merged[p.project] = p
+            }
+        }
+        return merged.values.sorted { $0.tokens > $1.tokens }
+    }
+
+    /// 路径转显示格式（与 ccusage active_projects 一致）
+    /// - 空字符串 → (unknown)
+    /// - /Users/luoqi → ~
+    /// - /Users/luoqi/... → ~/...
+    /// - 其他原样
+    private static func displayProject(_ raw: String) -> String {
+        let home = NSHomeDirectory()
+        if raw.isEmpty { return "(unknown)" }
+        if raw == home { return "~" }
+        if raw.hasPrefix(home + "/") { return "~" + String(raw.dropFirst(home.count)) }
+        return raw
+    }
+
     // MARK: - Reasoning Tokens (bonus)
 
     /// 区间内各模型的 reasoning_tokens 总量（仅 ZCode 推理模型有值）。
