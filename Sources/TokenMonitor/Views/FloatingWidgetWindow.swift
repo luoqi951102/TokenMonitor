@@ -51,6 +51,8 @@ final class FloatingWidgetWindow {
         if window == nil {
             createWindow()
         }
+        // 每次显示时刷新菜单勾选状态（防止 size/opacity 改过后菜单不同步）
+        rebuildMenuStates()
         Self.log("show: window=\(window != nil ? "ok" : "nil") isVisible=\(window?.isVisible ?? false)")
         window?.makeKeyAndOrderFront(nil)
         window?.orderFrontRegardless()
@@ -265,7 +267,8 @@ final class FloatingWidgetWindow {
     }
 
     private func rebuildMenuStates() {
-        guard let menu = window?.menu else { return }
+        // 菜单存在 self.menu 上（hosting.view.menu 引用同一个对象）
+        guard let menu = self.menu else { return }
         let size = currentSize()
         for item in menu.items {
             if let raw = item.representedObject as? String, let s = Size(rawValue: raw) {
