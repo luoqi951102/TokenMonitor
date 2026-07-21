@@ -33,7 +33,7 @@ final class SyncRunner: ObservableObject {
     }
 
     /// 自动刷新间隔（分钟）
-    @Published var intervalMinutes: Int = UserDefaults.standard.object(forKey: "sync_interval_minutes") as? Int ?? 10 {
+    @Published var intervalMinutes: Int = UserDefaults.standard.object(forKey: "sync_interval_minutes") as? Int ?? 5 {
         didSet {
             UserDefaults.standard.set(intervalMinutes, forKey: "sync_interval_minutes")
             restartTimer()
