@@ -36,11 +36,17 @@ enum UsageRange: String, Codable, CaseIterable {
     }
 }
 
-/// 单个 (source, model) 维度的用量汇总
+/// 单个 (source, model[, provider]) 维度的用量汇总
 struct ModelUsage: Codable, Identifiable, Equatable {
-    var id: String { "\(source)/\(model)" }
+    var id: String {
+        if provider.isEmpty {
+            return "\(source)/\(model)"
+        }
+        return "\(source)/\(provider)/\(model)"
+    }
     let model: String                  // 原样日志字符串，如 "glm-5.2"、"claude-sonnet-4-5"
     let source: String                 // "claude" | "zcode"
+    let provider: String               // provider_id（claude 日志为空，zcode 来自 model_usage.provider_id）
     let inputTokens: Int               // 输入 token
     let cacheCreationTokens: Int       // 缓存写入
     let cacheReadTokens: Int           // 缓存命中
@@ -60,8 +66,15 @@ struct ModelUsage: Codable, Identifiable, Equatable {
         return Double(toolCallCount) / Double(msgCount)
     }
 
+    /// 显示名：带 provider 后缀（如果有多 provider）
+    /// 例如 "GLM-5.2 · 智谱官方" / "glm-5.2 · 自定义·7aff2f39"
+    var displayWithProvider: String {
+        let p = providerDisplayName(provider)
+        return p.isEmpty ? model : "\(model) · \(p)"
+    }
+
     enum CodingKeys: String, CodingKey {
-        case model, source
+        case model, source, provider
         case inputTokens = "input_tokens"
         case cacheCreationTokens = "cache_creation_tokens"
         case cacheReadTokens = "cache_read_tokens"
@@ -151,4 +164,42 @@ func lastPathComponent(_ raw: String) -> String {
     // 标准路径：取最后一段
     let parts = raw.split(separator: "/").map(String.init)
     return parts.last ?? raw
+}
+
+/// provider_id 转可读名。
+///
+/// ZCode 的 provider_id 有几种格式：
+///   - "builtin:bigmodel-coding-plan" → "智谱官方"
+///   - "builtin:xxx"                  → "官方 xxx"
+///   - UUID（如 "7aff2f39-..."）       → "自定义 7aff2f39"（取前 8 位）
+///   - 空（Claude 日志没 provider）    → ""
+///
+/// 如果用户在 Settings 里配置了 provider 别名映射，优先用别名。
+func providerDisplayName(_ provider: String) -> String {
+    if provider.isEmpty { return "" }
+
+    // 用户自定义别名（存 UserDefaults：provider_alias_<key> -> 名字）
+    let aliasKey = "provider_alias_\(provider)"
+    if let alias = UserDefaults.standard.string(forKey: aliasKey), !alias.isEmpty {
+        return alias
+    }
+
+    if provider.hasPrefix("builtin:") {
+        let suffix = String(provider.dropFirst("builtin:".count))
+        switch suffix {
+        case "bigmodel-coding-plan": return "智谱官方"
+        case "deepseek": return "DeepSeek"
+        case "anthropic": return "Anthropic"
+        case "openai": return "OpenAI"
+        default: return "官方·\(suffix)"
+        }
+    }
+
+    // UUID 格式：取前 8 位
+    if provider.contains("-") && provider.count >= 8 {
+        let short = String(provider.prefix(8))
+        return "自定义·\(short)"
+    }
+
+    return provider
 }

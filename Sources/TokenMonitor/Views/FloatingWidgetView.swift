@@ -296,14 +296,23 @@ private struct MediumContent: View {
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(.secondary)
                     ForEach(viewModel.topModels(3)) { usage in
+                        let providerName = providerDisplayName(usage.provider)
                         HStack(spacing: 4) {
                             Circle()
-                                .fill(Theme.modelColor(usage.model))
+                                .fill(Theme.modelColor(usage.model + usage.provider))
                                 .frame(width: 6, height: 6)
-                            Text(usage.model)
-                                .font(.system(size: 9, weight: .medium))
-                                .lineLimit(1)
-                                .truncationMode(.middle)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(usage.model)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                if !providerName.isEmpty {
+                                    Text(providerName)
+                                        .font(.system(size: 7))
+                                        .foregroundStyle(.tertiary)
+                                        .lineLimit(1)
+                                }
+                            }
                             Spacer(minLength: 2)
                             Text(formatTokens(usage.totalTokens))
                                 .font(.system(size: 9, design: .monospaced))
@@ -449,21 +458,30 @@ private struct LargeContent: View {
                     .padding(.horizontal, 16)
                 let maxTotal = viewModel.models.first?.totalTokens ?? 1
                 ForEach(viewModel.topModels(5)) { usage in
+                    let providerName = providerDisplayName(usage.provider)
                     HStack(spacing: 6) {
                         Circle()
-                            .fill(Theme.modelColor(usage.model))
+                            .fill(Theme.modelColor(usage.model + usage.provider))
                             .frame(width: 7, height: 7)
-                        Text(usage.model)
-                            .font(.system(size: 11, weight: .medium))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .frame(width: 110, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(usage.model)
+                                .font(.system(size: 11, weight: .medium))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            if !providerName.isEmpty {
+                                Text(providerName)
+                                    .font(.system(size: 8))
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .frame(width: 110, alignment: .leading)
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
                                 RoundedRectangle(cornerRadius: 2)
                                     .fill(.quaternary.opacity(0.4))
                                 RoundedRectangle(cornerRadius: 2)
-                                    .fill(Theme.modelColor(usage.model).opacity(0.85))
+                                    .fill(Theme.modelColor(usage.model + usage.provider).opacity(0.85))
                                     .frame(width: max(2, geo.size.width * CGFloat(Double(usage.totalTokens) / Double(maxTotal))))
                             }
                         }

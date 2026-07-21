@@ -102,13 +102,22 @@ struct ToolCallView: View {
                 }
                 Divider()
                 ForEach(ranked.prefix(8)) { u in
+                    let providerName = providerDisplayName(u.provider)
                     HStack(spacing: 8) {
                         HStack(spacing: 6) {
-                            Circle().fill(Theme.modelColor(u.model)).frame(width: 8, height: 8)
-                            Text(u.model)
-                                .font(.caption.weight(.medium))
-                                .lineLimit(1)
-                                .truncationMode(.middle)
+                            Circle().fill(Theme.modelColor(u.model + u.provider)).frame(width: 8, height: 8)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(u.model)
+                                    .font(.caption.weight(.medium))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                if !providerName.isEmpty {
+                                    Text(providerName)
+                                        .font(.system(size: 8))
+                                        .foregroundStyle(.tertiary)
+                                        .lineLimit(1)
+                                }
+                            }
                         }
                         .frame(width: 110, alignment: .leading)
                         GeometryReader { geo in

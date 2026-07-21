@@ -67,10 +67,16 @@ struct ModelComparisonView: View {
     }
 
     private func modelRow(_ u: ModelUsage) -> some View {
-        HStack(spacing: 4) {
+        let providerName = providerDisplayName(u.provider)
+        return HStack(spacing: 4) {
             HStack(spacing: 4) {
-                Circle().fill(Theme.modelColor(u.model)).frame(width: 6, height: 6)
-                Text(u.model).font(.caption2.weight(.medium)).lineLimit(1)
+                Circle().fill(Theme.modelColor(u.model + u.provider)).frame(width: 6, height: 6)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(u.model).font(.caption2.weight(.medium)).lineLimit(1)
+                    if !providerName.isEmpty {
+                        Text(providerName).font(.system(size: 8)).foregroundStyle(.tertiary).lineLimit(1)
+                    }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             cell(u.inputTokens)
@@ -118,11 +124,20 @@ struct ModelComparisonView: View {
     private func compositionBar(_ u: ModelUsage, maxTotal: Int) -> some View {
         let total = max(1, u.totalTokens)
         let pct = Double(u.totalTokens) / Double(max(maxTotal, 1))
+        let providerName = providerDisplayName(u.provider)
         return VStack(alignment: .leading, spacing: 2) {
             HStack {
-                Text(u.model)
-                    .font(.system(size: 10, weight: .medium))
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(u.model)
+                        .font(.system(size: 10, weight: .medium))
+                        .lineLimit(1)
+                    if !providerName.isEmpty {
+                        Text(providerName)
+                            .font(.system(size: 8))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
+                }
                 Spacer()
                 Text(formatTokens(u.totalTokens))
                     .font(.system(size: 9, design: .monospaced))

@@ -285,21 +285,30 @@ struct ContentView: View {
 
     private func modelBar(_ usage: ModelUsage, maxTotal: Int) -> some View {
         let pct = maxTotal > 0 ? Double(usage.totalTokens) / Double(maxTotal) : 0
+        let providerName = providerDisplayName(usage.provider)
         return HStack(spacing: 8) {
             Circle()
-                .fill(Theme.modelColor(usage.model))
+                .fill(Theme.modelColor(usage.model + usage.provider))
                 .frame(width: 8, height: 8)
-            Text(usage.model)
-                .font(.caption.weight(.medium))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(width: 108, alignment: .leading)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(usage.model)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if !providerName.isEmpty {
+                    Text(providerName)
+                        .font(.system(size: 8))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(width: 108, alignment: .leading)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(.quaternary.opacity(0.4))
                     RoundedRectangle(cornerRadius: 3)
-                        .fill(Theme.modelColor(usage.model).opacity(0.85))
+                        .fill(Theme.modelColor(usage.model + usage.provider).opacity(0.85))
                         .frame(width: max(4, geo.size.width * pct))
                 }
             }
@@ -309,7 +318,7 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 52, alignment: .trailing)
         }
-        .frame(height: 20)
+        .frame(height: 26)
     }
 
     // MARK: - Trend

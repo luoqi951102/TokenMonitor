@@ -90,12 +90,14 @@ final class Aggregator {
         [source, source]
     }
 
-    // MARK: - By Model (聚合区间内每个模型总量)
+    // MARK: - By Model (聚合区间内每个模型 + provider 总量)
+    //
+    // 当一个 model 有多个 provider（如 glm-5.2 来自智谱官方 + 自定义供应商），
+    // 拆成多行显示。provider 为空时（Claude 日志）合并为一行。
 
-    /// 按 (source, model) 聚合，返回 ModelUsage 列表，按 totalContextTokens 降序。
     func models(in range: DateRange, sourceFilter: String = "all") -> [ModelUsage] {
         let sql = """
-            SELECT model, source,
+            SELECT model, source, provider,
                    COALESCE(SUM(input_tokens), 0),
                    COALESCE(SUM(cache_creation_input_tokens), 0),
                    COALESCE(SUM(cache_read_input_tokens), 0),
@@ -105,7 +107,7 @@ final class Aggregator {
             FROM usage
             WHERE local_date BETWEEN ? AND ?
               AND (source = ? OR ? = 'all')
-            GROUP BY model, source
+            GROUP BY model, source, provider
             ORDER BY SUM(total_context) DESC
             """
 
@@ -117,32 +119,45 @@ final class Aggregator {
             rows.append(ModelUsage(
                 model: row.string(at: 0),
                 source: row.string(at: 1),
-                inputTokens: row.int(at: 2),
-                cacheCreationTokens: row.int(at: 3),
-                cacheReadTokens: row.int(at: 4),
-                outputTokens: row.int(at: 5),
-                totalContextTokens: row.int(at: 6),
-                msgCount: row.int(at: 7),
+                provider: row.string(at: 2),
+                inputTokens: row.int(at: 3),
+                cacheCreationTokens: row.int(at: 4),
+                cacheReadTokens: row.int(at: 5),
+                outputTokens: row.int(at: 6),
+                totalContextTokens: row.int(at: 7),
+                msgCount: row.int(at: 8),
                 toolCallCount: 0
             ))
         }
 
-        // 补 tool_call_count：按 model 维度（zcode 来源行才有效）
+        // 补 tool_call_count：按 (model, provider) 维度（zcode 来源行才有效）
         if let zcodeDB, sourceFilter == "all" || sourceFilter == "zcode" {
+            // ZCodeUsageDB 当前按 model 聚合工具调用，没有 provider 维度
+            // 这里用 model 维度近似（同一 model 的所有 provider 共享该 model 的工具调用数按比例分摊不现实，
+            // 简化：tool_call_count 按 provider 的 msgCount 比例分配）
             let toolStats = zcodeDB.toolCallsByModel(start: range.start, end: range.end)
+            // 按 model 分组，计算每个 model 的总 msgCount（用于按比例分摊）
+            var modelTotalMsgs: [String: Int] = [:]
+            for r in rows where r.source == "zcode" {
+                modelTotalMsgs[r.model, default: 0] += r.msgCount
+            }
             for i in rows.indices where rows[i].source == "zcode" {
                 let stat = toolStats[rows[i].model]
-                let tools = stat?.toolCalls ?? 0
+                let totalTools = stat?.toolCalls ?? 0
+                let totalMsgs = modelTotalMsgs[rows[i].model] ?? 1
+                // 按 msgCount 比例分摊工具调用数到各 provider
+                let shareTools = totalMsgs > 0 ? totalTools * rows[i].msgCount / totalMsgs : 0
                 rows[i] = ModelUsage(
                     model: rows[i].model,
                     source: rows[i].source,
+                    provider: rows[i].provider,
                     inputTokens: rows[i].inputTokens,
                     cacheCreationTokens: rows[i].cacheCreationTokens,
                     cacheReadTokens: rows[i].cacheReadTokens,
                     outputTokens: rows[i].outputTokens,
                     totalContextTokens: rows[i].totalContextTokens,
                     msgCount: rows[i].msgCount,
-                    toolCallCount: tools
+                    toolCallCount: shareTools
                 )
             }
         }
