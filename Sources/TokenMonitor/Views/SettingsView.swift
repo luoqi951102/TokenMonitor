@@ -11,6 +11,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 header
                 syncSection
+                loginItemSection
                 databaseSection
                 defaultsSection
                 aboutSection
@@ -246,6 +247,55 @@ struct SettingsView: View {
                     Text("ZCode").tag("zcode")
                 }
                 .pickerStyle(.segmented)
+            }
+        }
+    }
+
+    // MARK: - Login Item（开机自启动）
+
+    @StateObject private var loginItem = LoginItemStore.shared
+
+    @ViewBuilder
+    private var loginItemSection: some View {
+        card(title: "开机自启动", icon: "power") {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("登录后自动启动 Token Monitor")
+                        .font(.caption.weight(.medium))
+                    Spacer()
+                    Toggle("", isOn: Binding(
+                        get: { loginItem.isEnabled },
+                        set: { newValue in
+                            if newValue {
+                                loginItem.enable()
+                            } else {
+                                loginItem.disable()
+                            }
+                        }
+                    ))
+                    .labelsHidden()
+                    .tint(Theme.brand)
+                }
+
+                Text("启用后会在「系统设置 → 通用 → 登录项与扩展」里出现 Token Monitor，可随时手动开关。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    Button("打开系统设置") {
+                        loginItem.openSystemSettings()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .font(.caption)
+                    Spacer()
+                }
+
+                if let err = loginItem.errorMessage {
+                    Text(err)
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                }
             }
         }
     }
