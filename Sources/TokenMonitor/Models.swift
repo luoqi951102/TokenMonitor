@@ -260,18 +260,6 @@ func inferProviderFromModel(_ model: String) -> String {
     if model == "glm-52-w4a8-kv" || model == "glm-52-w4a8-kvp" {
         return "词元之芯·Token工厂"
     }
-    // 浙算 MaaS（用户提供的 4 个 model 历史映射）
-    // 这些 model 的历史 Claude 行 provider 为空，事后无法回溯实际 baseURL，
-    // 用户确认统一归属 浙算 MaaS。
-    if model == "glm-5.2" || model == "glm-5.1" {
-        return "浙算 MaaS"
-    }
-    if model == "deepseek-v4-flash" {
-        return "浙算 MaaS"
-    }
-    if model == "claude-opus-4-8" {
-        return "浙算 MaaS"
-    }
     // 通义千问
     if model.hasPrefix("qwen3") {
         return "通义千问"
@@ -288,7 +276,8 @@ func inferProviderFromModel(_ model: String) -> String {
     if model.hasPrefix("minimax-") {
         return "Minimax"
     }
-    // 其他没匹配的：不显示后缀
+    // 其他没匹配的（如 glm-5.2 / glm-5.1 / deepseek-v4-flash / claude-opus-4-8）：
+    // Claude JSONL 不记 baseURL，事后无法回溯真实供应商，留空待用户补充。
     return ""
 }
 
@@ -303,7 +292,7 @@ let ProviderUUIDMap: [String: String] = [
 /// baseURL → 友好名映射表。
 /// Claude 走 cc-usage sync 时读 ~/.claude/settings.json 的 ANTHROPIC_BASE_URL 写入 provider 列，
 /// 该字段原文即为 baseURL。Swift 端用它把 URL 翻译成可读供应商名。
-/// 标准映射来自 CCM ccm.sh（11 条），api.goodputai.cn 为用户补充（第三方代理）。
+/// 标准映射来自 CCM ccm.sh（11 条），goodputai.cn / ai.zj-computility.com 为用户补充（第三方代理）。
 /// 不在表内的 baseURL 会退化为「代理·<host>」。
 let BaseURLProviderMap: [String: String] = [
     "https://api.z.ai/api/anthropic": "智谱官方·国际",
@@ -319,4 +308,5 @@ let BaseURLProviderMap: [String: String] = [
     "https://api.stepfun.ai/v1/anthropic": "StepFun",
     "https://api.anthropic.com/": "Anthropic 官方",
     "https://api.goodputai.cn": "词元之芯·Token工厂",
+    "https://ai.zj-computility.com/maas": "浙算 MaaS",
 ]
