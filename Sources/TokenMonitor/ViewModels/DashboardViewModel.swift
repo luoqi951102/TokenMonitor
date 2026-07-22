@@ -47,6 +47,11 @@ final class DashboardViewModel: ObservableObject {
     // MARK: - Aggregator
 
     private var aggregator: Aggregator?
+    /// 上次 openDB 时记录的 ccusage.db mtime，用于 refresh() 时判断是否需要重建。
+    /// 高频路径（5min timer / 浮窗刷新按钮）不需要每次重建 aggregator，
+    /// 否则会反复 resolve/release security-scoped bookmark，
+    /// 在 sandbox 下间歇读不到 ZCode 库（工具调用显示 0 的 bug 根因）。
+    private var lastSeenCCUsageMtime: Date? = nil
 
     // MARK: - Init
 
@@ -67,10 +72,32 @@ final class DashboardViewModel: ObservableObject {
             aggregator = Aggregator(db: db, zcodeDB: zcode)
             hasDB = true
             dataSpan = aggregator?.dataSpan() ?? (nil, nil)
+            lastSeenCCUsageMtime = ccusageMtime()
         } else {
             aggregator = nil
             hasDB = false
+            lastSeenCCUsageMtime = nil
         }
+    }
+
+    /// 只在 ccusage.db mtime 变化时重建 aggregator，避免高频路径反复
+    /// resolve/release security-scoped bookmark 引起 ZCode 句柄间歇性失效。
+    private func reopenDBIfChanged() {
+        let now = ccusageMtime()
+        guard now != lastSeenCCUsageMtime else { return }
+        openDB()
+    }
+
+    private func ccusageMtime() -> Date? {
+        let resolvedPath: String
+        if let url = BookmarkStore.shared.resolve(.ccusageDB) {
+            defer { BookmarkStore.shared.release(url) }
+            resolvedPath = url.path
+        } else {
+            resolvedPath = UsageDBPath.ccusageDefault
+        }
+        let attrs = try? FileManager.default.attributesOfItem(atPath: resolvedPath)
+        return attrs?[.modificationDate] as? Date
     }
 
     // MARK: - Lifecycle
@@ -80,7 +107,7 @@ final class DashboardViewModel: ObservableObject {
         syncRunner.startTimer()
         Task {
             await syncRunner.syncNow()
-            openDB()  // sync 完成后重新打开（DB 可能刚被创建）
+            reopenDBIfChanged()  // sync 完成后看 DB 有没有被新建/改写
             refresh()
             pushWidgetSnapshot()
         }
@@ -94,6 +121,12 @@ final class DashboardViewModel: ObservableObject {
     // MARK: - Refresh
 
     func refresh() {
+        // refresh 高频被调用（5min timer / 浮窗刷新按钮 / menu close 后 reopen 等）
+        // 不能每次都重建 aggregator —— 仅在 ccusage.db mtime 变化时才重建。
+        // 否则 ZCodeUsageDB 的 security-scoped bookmark 会被反复 resolve/release，
+        // 在 sandbox 下间歇性读到 nil，导致工具调用显示 0 的 bug。
+        reopenDBIfChanged()
+
         guard let aggregator else {
             errorMessage = hasDB ? "数据库未就绪" : "未找到 ~/.claude/ccusage.db，请先运行 cc-usage sync"
             return
@@ -129,10 +162,15 @@ final class DashboardViewModel: ObservableObject {
     //
     // sandbox=true 下无法 spawn cc-use，manualSync 只重新读 DB + 刷新视图。
     // 实际数据同步由用户在终端运行 `cc-usage sync` 完成，或通过 launchd 定时跑。
+    //
+    // 注意：openDB 会销毁旧 aggregator 并重建 UsageDB/ZCodeUsageDB 实例。
+    // 高频路径（5 分钟 timer / 浮窗刷新按钮）请只调 refresh()，不要走 openDB()，
+    // 否则会反复 resolve/release security-scoped bookmark 引起 sandbox
+    // 间歇性读不到 ZCode 库（工具调用显示 0 的 bug 根因）。
 
     func manualSync() async {
         await syncRunner.syncNow()
-        openDB()
+        reopenDBIfChanged()  // cc-usage 写完后再决定要不要重建 aggregator（不是每次都重建）
         refresh()
         pushWidgetSnapshot()
     }
