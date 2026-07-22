@@ -260,6 +260,18 @@ func inferProviderFromModel(_ model: String) -> String {
     if model == "glm-52-w4a8-kv" || model == "glm-52-w4a8-kvp" {
         return "词元之芯·Token工厂"
     }
+    // 浙算 MaaS（用户提供的 4 个 model 历史映射）
+    // 这些 model 的历史 Claude 行 provider 为空，事后无法回溯实际 baseURL，
+    // 用户确认统一归属 浙算 MaaS。
+    if model == "glm-5.2" || model == "glm-5.1" {
+        return "浙算 MaaS"
+    }
+    if model == "deepseek-v4-flash" {
+        return "浙算 MaaS"
+    }
+    if model == "claude-opus-4-8" {
+        return "浙算 MaaS"
+    }
     // 通义千问
     if model.hasPrefix("qwen3") {
         return "通义千问"
