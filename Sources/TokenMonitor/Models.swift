@@ -260,6 +260,12 @@ func inferProviderFromModel(_ model: String) -> String {
     if model == "glm-52-w4a8-kv" || model == "glm-52-w4a8-kvp" {
         return "词元之芯·Token工厂"
     }
+    // 浙算 MaaS（用户确认的历史归属）
+    // - glm-5.1: msg.id 100% 走 msg_<uuid> 格式，与 May25 settings.json 备份里 ai.zj-computility.com/maas 印证
+    // - claude-opus-4-8: msg.id 走 msg_01XXX 格式（看着像 Anthropic 官方），由用户确认经浙算 MaaS 代理
+    if model == "glm-5.1" || model == "claude-opus-4-8" {
+        return "浙算 MaaS"
+    }
     // 通义千问
     if model.hasPrefix("qwen3") {
         return "通义千问"
