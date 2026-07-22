@@ -67,9 +67,9 @@ struct ModelUsage: Codable, Identifiable, Equatable {
     }
 
     /// 显示名：带 provider 后缀（如果有多 provider）
-    /// 例如 "GLM-5.2 · 智谱官方" / "glm-5.2 · 自定义·7aff2f39"
+    /// 例如 "GLM-5.2 · 智谱官方" / "glm-52-w4a8-kv · 词元之芯·Token工厂"
     var displayWithProvider: String {
-        let p = providerDisplayName(provider)
+        let p = providerDisplayName(provider, model: model)
         return p.isEmpty ? model : "\(model) · \(p)"
     }
 
@@ -172,34 +172,74 @@ func lastPathComponent(_ raw: String) -> String {
 ///   - "builtin:bigmodel-coding-plan" → "智谱官方"
 ///   - "builtin:xxx"                  → "官方 xxx"
 ///   - UUID（如 "7aff2f39-..."）       → "自定义 7aff2f39"（取前 8 位）
-///   - 空（Claude 日志没 provider）    → ""
+///   - 空（Claude 日志没 provider）    → ""（会触发 model 维度推断）
 ///
-/// 如果用户在 Settings 里配置了 provider 别名映射，优先用别名。
-func providerDisplayName(_ provider: String) -> String {
-    if provider.isEmpty { return "" }
-
+/// model 维度推断（用于 Claude 日志无 provider 场景）：
+///   - "glm-52-w4a8-kv"  → 词元之芯·Token工厂
+///   - "glm-52-w4a8-kvp" → 词元之芯·Token工厂
+///   - "minimax-m3"        → Minimax
+///   - "qwen3.7-plus"      → 通义千问
+///   - "doubao-seed-2.0-pro" → 豆包
+///
+/// 如果用户在 Settings 里配置了 provider 别名映射，优先用别名（按完整 key 匹配）。
+func providerDisplayName(_ provider: String, model: String = "") -> String {
     // 用户自定义别名（存 UserDefaults：provider_alias_<key> -> 名字）
+    // key 格式：provider_alias_<provider>__<model>，用于区分"同 provider 不同 model"
+    let aliasKeyModel = "provider_alias_\(provider)__\(model)"
+    if !provider.isEmpty, let alias = UserDefaults.standard.string(forKey: aliasKeyModel), !alias.isEmpty {
+        return alias
+    }
     let aliasKey = "provider_alias_\(provider)"
-    if let alias = UserDefaults.standard.string(forKey: aliasKey), !alias.isEmpty {
+    if !provider.isEmpty, let alias = UserDefaults.standard.string(forKey: aliasKey), !alias.isEmpty {
         return alias
     }
 
-    if provider.hasPrefix("builtin:") {
-        let suffix = String(provider.dropFirst("builtin:".count))
-        switch suffix {
-        case "bigmodel-coding-plan": return "智谱官方"
-        case "deepseek": return "DeepSeek"
-        case "anthropic": return "Anthropic"
-        case "openai": return "OpenAI"
-        default: return "官方·\(suffix)"
+    // 1. provider 已知 → 内置映射
+    if !provider.isEmpty {
+        if provider.hasPrefix("builtin:") {
+            let suffix = String(provider.dropFirst("builtin:".count))
+            switch suffix {
+            case "bigmodel-coding-plan": return "智谱官方"
+            case "deepseek": return "DeepSeek"
+            case "anthropic": return "Anthropic"
+            case "openai": return "OpenAI"
+            default: return "官方·\(suffix)"
+            }
         }
+        // UUID 格式：取前 8 位
+        if provider.contains("-") && provider.count >= 8 {
+            let short = String(provider.prefix(8))
+            return "自定义·\(short)"
+        }
+        return provider
     }
 
-    // UUID 格式：取前 8 位
-    if provider.contains("-") && provider.count >= 8 {
-        let short = String(provider.prefix(8))
-        return "自定义·\(short)"
-    }
+    // 2. provider 为空（Claude 日志）→ 按 model 推断供应商
+    return inferProviderFromModel(model)
+}
 
-    return provider
+/// Claude 日志无 provider 时，根据 model 名推断供应商
+func inferProviderFromModel(_ model: String) -> String {
+    // 词元之芯·Token工厂
+    if model == "glm-52-w4a8-kv" || model == "glm-52-w4a8-kvp" {
+        return "词元之芯·Token工厂"
+    }
+    // 通义千问
+    if model.hasPrefix("qwen3") {
+        return "通义千问"
+    }
+    // 豆包
+    if model.hasPrefix("doubao-") {
+        return "豆包"
+    }
+    // 火山引擎（豆包官方外的）
+    if model.hasPrefix("deepseek-v4-pro") {
+        return "火山引擎"
+    }
+    // Minimax
+    if model.hasPrefix("minimax-") {
+        return "Minimax"
+    }
+    // 其他没匹配的：不显示后缀
+    return ""
 }

@@ -67,7 +67,7 @@ struct ModelComparisonView: View {
     }
 
     private func modelRow(_ u: ModelUsage) -> some View {
-        let providerName = providerDisplayName(u.provider)
+        let providerName = providerDisplayName(u.provider, model: u.model)
         return HStack(spacing: 4) {
             HStack(spacing: 4) {
                 Circle().fill(Theme.modelColor(u.model + u.provider)).frame(width: 6, height: 6)
@@ -124,7 +124,7 @@ struct ModelComparisonView: View {
     private func compositionBar(_ u: ModelUsage, maxTotal: Int) -> some View {
         let total = max(1, u.totalTokens)
         let pct = Double(u.totalTokens) / Double(max(maxTotal, 1))
-        let providerName = providerDisplayName(u.provider)
+        let providerName = providerDisplayName(u.provider, model: u.model)
         return VStack(alignment: .leading, spacing: 2) {
             HStack {
                 VStack(alignment: .leading, spacing: 0) {

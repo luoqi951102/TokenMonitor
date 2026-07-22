@@ -102,7 +102,7 @@ struct ToolCallView: View {
                 }
                 Divider()
                 ForEach(ranked.prefix(8)) { u in
-                    let providerName = providerDisplayName(u.provider)
+                    let providerName = providerDisplayName(u.provider, model: u.model)
                     HStack(spacing: 8) {
                         HStack(spacing: 6) {
                             Circle().fill(Theme.modelColor(u.model + u.provider)).frame(width: 8, height: 8)

@@ -285,7 +285,7 @@ struct ContentView: View {
 
     private func modelBar(_ usage: ModelUsage, maxTotal: Int) -> some View {
         let pct = maxTotal > 0 ? Double(usage.totalTokens) / Double(maxTotal) : 0
-        let providerName = providerDisplayName(usage.provider)
+        let providerName = providerDisplayName(usage.provider, model: usage.model)
         return HStack(spacing: 8) {
             Circle()
                 .fill(Theme.modelColor(usage.model + usage.provider))

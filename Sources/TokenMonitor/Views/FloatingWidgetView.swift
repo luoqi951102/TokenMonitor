@@ -296,7 +296,7 @@ private struct MediumContent: View {
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(.secondary)
                     ForEach(viewModel.topModels(3)) { usage in
-                        let providerName = providerDisplayName(usage.provider)
+                        let providerName = providerDisplayName(usage.provider, model: usage.model)
                         HStack(spacing: 4) {
                             Circle()
                                 .fill(Theme.modelColor(usage.model + usage.provider))
@@ -458,7 +458,7 @@ private struct LargeContent: View {
                     .padding(.horizontal, 16)
                 let maxTotal = viewModel.models.first?.totalTokens ?? 1
                 ForEach(viewModel.topModels(5)) { usage in
-                    let providerName = providerDisplayName(usage.provider)
+                    let providerName = providerDisplayName(usage.provider, model: usage.model)
                     HStack(spacing: 6) {
                         Circle()
                             .fill(Theme.modelColor(usage.model + usage.provider))
