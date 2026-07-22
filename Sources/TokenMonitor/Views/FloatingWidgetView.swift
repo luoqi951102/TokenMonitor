@@ -180,6 +180,48 @@ struct FloatingFilterBar: View {
     }
 }
 
+// MARK: - 手动刷新按钮（悬浮窗右上角）
+//
+// 点击触发 viewModel.manualSync()：
+//  - sandbox 下真实 sync 由 launchd / 终端执行，这里只重新打开 DB + refresh + pushWidgetSnapshot
+//  - 旋转动画跟 viewModel.syncRunner.isSyncing 联动，sync 完成后停在原位
+// 三种尺寸共用，size 参数控制图标和命中区大小。
+
+private struct RefreshIconButton: View {
+    @ObservedObject var viewModel: DashboardViewModel
+    var size: CGFloat = 12
+    var hitSize: CGFloat = 20
+
+    @State private var rotating: Bool = false
+
+    var body: some View {
+        Button {
+            // 立即开启旋转动画，避免 syncNow 内部 300ms sleep 让用户感觉无响应
+            rotating = true
+            Task { @MainActor in
+                await viewModel.manualSync()
+                rotating = false
+            }
+        } label: {
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: size, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .rotationEffect(.degrees(rotating ? 360 : 0))
+                .animation(
+                    rotating
+                        ? .linear(duration: 0.8).repeatForever(autoreverses: false)
+                        : .easeOut(duration: 0.2),
+                    value: rotating
+                )
+                .frame(width: hitSize, height: hitSize)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("重新读取数据库并刷新")
+        .accessibilityLabel("刷新")
+    }
+}
+
 // MARK: - Compact (180×96) — 比之前稍高，给 range 留位置
 
 private struct CompactContent: View {
@@ -196,6 +238,8 @@ private struct CompactContent: View {
                 Spacer()
                 RangeSwitcher(viewModel: viewModel)
                     .scaleEffect(0.85)
+                RefreshIconButton(viewModel: viewModel, size: 10, hitSize: 16)
+                    .padding(.leading, 2)
             }
             .padding(.horizontal, 10)
 
@@ -245,6 +289,7 @@ private struct MediumContent: View {
                 Text("Token Monitor")
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
+                RefreshIconButton(viewModel: viewModel, size: 11, hitSize: 18)
             }
             .padding(.horizontal, 14)
             .padding(.top, 12)
@@ -385,6 +430,7 @@ private struct LargeContent: View {
                 Text("Token Monitor")
                     .font(.system(size: 14, weight: .semibold))
                 Spacer()
+                RefreshIconButton(viewModel: viewModel, size: 12, hitSize: 20)
             }
             .padding(.horizontal, 16)
             .padding(.top, 14)
