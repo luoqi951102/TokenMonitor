@@ -162,7 +162,45 @@ final class Aggregator {
             }
         }
 
-        return rows
+        // 二次合并：把 displayWithProvider 相同的行合并（计数累加）。
+        // 背景：Claude 历史日志没有 baseURL，provider 列为空；going-forward 后新行带 baseURL 标签。
+        // 同一 model 的「空 provider 历史行 + baseURL 新行」会被 SQL GROUP BY 拆成两行，
+        // 但 displayWithProvider 在两端都解析为同一友好名（如「glm-52-w4a8-kv · 词元之芯·Token工厂」），
+        // 视觉上应合并为一行。合并后 provider 优先取非空（baseURL 标签更精确）。
+        // 合并会改变总数，需重排以保证按 totalContextTokens 降序（与原 SQL ORDER BY 一致）。
+        let merged = Self.mergeByDisplayProvider(rows)
+        return merged.sorted { $0.totalContextTokens > $1.totalContextTokens }
+    }
+
+    /// 把 displayWithProvider 相同的 ModelUsage 行合并。
+    /// - key: `<source>|<displayWithProvider>`（包含 model + 解析后的供应商名）
+    /// - provider 字段：优先保留非空（baseURL/UUID/builtin 标签优于历史空推断）
+    /// - 各计数（tokens/msgs/toolCalls）累加
+    /// - 保留首次出现顺序（调用方按需重排）
+    private static func mergeByDisplayProvider(_ rows: [ModelUsage]) -> [ModelUsage] {
+        var grouped: [String: ModelUsage] = [:]
+        var order: [String] = []
+        for r in rows {
+            let key = "\(r.source)|\(r.displayWithProvider)"
+            if let existing = grouped[key] {
+                grouped[key] = ModelUsage(
+                    model: existing.model,
+                    source: existing.source,
+                    provider: existing.provider.isEmpty ? r.provider : existing.provider,
+                    inputTokens: existing.inputTokens + r.inputTokens,
+                    cacheCreationTokens: existing.cacheCreationTokens + r.cacheCreationTokens,
+                    cacheReadTokens: existing.cacheReadTokens + r.cacheReadTokens,
+                    outputTokens: existing.outputTokens + r.outputTokens,
+                    totalContextTokens: existing.totalContextTokens + r.totalContextTokens,
+                    msgCount: existing.msgCount + r.msgCount,
+                    toolCallCount: existing.toolCallCount + r.toolCallCount
+                )
+            } else {
+                grouped[key] = r
+                order.append(key)
+            }
+        }
+        return order.compactMap { grouped[$0] }
     }
 
     // MARK: - Daily Totals (区间内按日，跨模型)

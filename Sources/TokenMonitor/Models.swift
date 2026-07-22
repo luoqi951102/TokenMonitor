@@ -168,18 +168,33 @@ func lastPathComponent(_ raw: String) -> String {
 
 /// provider_id 转可读名。
 ///
-/// ZCode 的 provider_id 有几种格式：
-///   - "builtin:bigmodel-coding-plan" → "智谱官方"
-///   - "builtin:xxx"                  → "官方 xxx"
-///   - UUID（如 "7aff2f39-..."）       → 走内置 UUID 映射表
-///   - 空（Claude 日志没 provider）    → 走 model 维度推断
+/// 三种 provider 字段格式（来自 cc-usage sync）：
+///   1. baseURL 原文（Claude going-forward）：https://api.goodputai.cn  → 走 BaseURLProviderMap 内置表 / 用户别名
+///   2. "builtin:xxx"（ZCode 内置供应商）：      builtin:bigmodel-coding-plan → 智谱官方
+///   3. UUID（ZCode 自定义供应商）：            7aff2f39-... → 走 ProviderUUIDMap
+///   4. 空（Claude 历史无 baseURL 记录）：       → 走 inferProviderFromModel(model)
 ///
 /// 内置 UUID 映射（用户提供的）：
 ///   7aff2f39-217e-4f1c-82f6-b8e857a9be22 → 浙算 MaaS
 ///   e42dedab-efa4-4e63-9de5-8138073a2383 → 词元之芯·Token工厂
 ///   f2b1acc3-7c19-4a25-a6b5-f9783a0d91f9 → 火山引擎
 ///
-/// model 维度推断（用于 Claude 日志无 provider 场景）：
+/// 内置 baseURL 映射（从 CCM ccm.sh 源码挖出，11 条标准供应商 + 1 条用户补充）：
+///   https://api.z.ai/api/anthropic                            → 智谱官方·国际
+///   https://open.bigmodel.cn/api/anthropic                    → 智谱官方·国内
+///   https://api.deepseek.com/anthropic                        → DeepSeek
+///   https://api.moonshot.ai/anthropic                         → 月之暗面·国际
+///   https://api.moonshot.cn/anthropic                         → 月之暗面·国内
+///   https://coding-intl.dashscope.aliyuncs.com/apps/anthropic → 通义千问·国际
+///   https://coding.dashscope.aliyuncs.com/apps/anthropic      → 通义千问·国内
+///   https://api.minimax.io/anthropic                          → Minimax·国际
+///   https://api.minimaxi.com/anthropic                        → Minimax·国内
+///   https://ark.cn-beijing.volces.com/api/coding              → 火山引擎
+///   https://api.stepfun.ai/v1/anthropic                       → StepFun
+///   https://api.anthropic.com/                                → Anthropic 官方
+///   https://api.goodputai.cn                                  → 词元之芯·Token工厂 (用户补充)
+///
+/// model 维度推断（仅 Claude 历史 provider 为空时）：
 ///   - "glm-52-w4a8-kv"  → 词元之芯·Token工厂
 ///   - "glm-52-w4a8-kvp" → 词元之芯·Token工厂
 ///   - "qwen3*"           → 通义千问
@@ -190,6 +205,7 @@ func lastPathComponent(_ raw: String) -> String {
 /// 如果用户在 Settings 里配置了 provider 别名映射，优先用别名（按完整 key 匹配）。
 func providerDisplayName(_ provider: String, model: String = "") -> String {
     // 用户自定义别名（存 UserDefaults：provider_alias_<key> -> 名字）
+    // 同时支持 base URL / UUID / builtin:xxx 三种 key
     let aliasKeyModel = "provider_alias_\(provider)__\(model)"
     if !provider.isEmpty, let alias = UserDefaults.standard.string(forKey: aliasKeyModel), !alias.isEmpty {
         return alias
@@ -201,6 +217,18 @@ func providerDisplayName(_ provider: String, model: String = "") -> String {
 
     // 1. provider 已知 → 内置映射
     if !provider.isEmpty {
+        // baseURL 带 http(s):// 前缀 → 走 baseURL 映射表
+        if provider.hasPrefix("http://") || provider.hasPrefix("https://") {
+            if let name = BaseURLProviderMap[provider] {
+                return name
+            }
+            // 未知 baseURL（第三方代理）：提取 host 末段做后缀
+            // https://api.goodputai.cn → goodputai.cn
+            if let host = URL(string: provider)?.host {
+                return "代理·\(host)"
+            }
+            return "代理·未知"
+        }
         if provider.hasPrefix("builtin:") {
             let suffix = String(provider.dropFirst("builtin:".count))
             switch suffix {
@@ -222,7 +250,7 @@ func providerDisplayName(_ provider: String, model: String = "") -> String {
         return provider
     }
 
-    // 2. provider 为空（Claude 日志）→ 按 model 推断供应商
+    // 2. provider 为空（Claude 历史）→ 按 model 推断供应商
     return inferProviderFromModel(model)
 }
 
@@ -258,4 +286,25 @@ let ProviderUUIDMap: [String: String] = [
     "7aff2f39-217e-4f1c-82f6-b8e857a9be22": "浙算 MaaS",
     "e42dedab-efa4-4e63-9de5-8138073a2383": "词元之芯·Token工厂",
     "f2b1acc3-7c19-4a25-a6b5-f9783a0d91f9": "火山引擎",
+]
+
+/// baseURL → 友好名映射表。
+/// Claude 走 cc-usage sync 时读 ~/.claude/settings.json 的 ANTHROPIC_BASE_URL 写入 provider 列，
+/// 该字段原文即为 baseURL。Swift 端用它把 URL 翻译成可读供应商名。
+/// 标准映射来自 CCM ccm.sh（11 条），api.goodputai.cn 为用户补充（第三方代理）。
+/// 不在表内的 baseURL 会退化为「代理·<host>」。
+let BaseURLProviderMap: [String: String] = [
+    "https://api.z.ai/api/anthropic": "智谱官方·国际",
+    "https://open.bigmodel.cn/api/anthropic": "智谱官方·国内",
+    "https://api.deepseek.com/anthropic": "DeepSeek",
+    "https://api.moonshot.ai/anthropic": "月之暗面·国际",
+    "https://api.moonshot.cn/anthropic": "月之暗面·国内",
+    "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic": "通义千问·国际",
+    "https://coding.dashscope.aliyuncs.com/apps/anthropic": "通义千问·国内",
+    "https://api.minimax.io/anthropic": "Minimax·国际",
+    "https://api.minimaxi.com/anthropic": "Minimax·国内",
+    "https://ark.cn-beijing.volces.com/api/coding": "火山引擎",
+    "https://api.stepfun.ai/v1/anthropic": "StepFun",
+    "https://api.anthropic.com/": "Anthropic 官方",
+    "https://api.goodputai.cn": "词元之芯·Token工厂",
 ]
