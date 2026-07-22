@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ToolCallView: View {
     @ObservedObject var viewModel: DashboardViewModel
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -30,34 +31,36 @@ struct ToolCallView: View {
                 Image(systemName: "wrench.and.screwdriver")
                     .foregroundStyle(Theme.tokenCacheRead)
                 Text("工具调用")
-                    .font(.caption.weight(.semibold))
+                    .font(Theme.Typography.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
             }
             HStack(spacing: 16) {
-                metric(label: "总调用数", value: formatNumber(viewModel.totalToolCalls))
-                metric(label: "总消息数", value: formatNumber(viewModel.totalMsgs))
+                metric(label: "总调用数", value: formatNumber(viewModel.totalToolCalls), tokens: viewModel.totalToolCalls)
+                metric(label: "总消息数", value: formatNumber(viewModel.totalMsgs), tokens: viewModel.totalMsgs)
                 let ratio = viewModel.totalMsgs > 0 ? Double(viewModel.totalToolCalls) / Double(viewModel.totalMsgs) : 0
-                metric(label: "调用/消息", value: String(format: "%.2f", ratio))
+                metric(label: "调用/消息", value: String(format: "%.2f", ratio), tokens: Int(ratio * 100))
             }
             if !hasToolData {
                 Text("当前区间内没有工具调用数据（仅 ZCode 来源会记录 tool_call_count）")
-                    .font(.caption2)
+                    .font(Theme.Typography.caption)
                     .foregroundStyle(.tertiary)
             }
         }
-        .padding(12)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(14)
+        .background(Theme.cardBackground(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 
-    private func metric(label: String, value: String) -> some View {
+    private func metric(label: String, value: String, tokens: Int) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .font(Theme.Typography.metric)
                 .monospacedDigit()
-                .foregroundStyle(Theme.tokenCacheRead)
-            Text(label).font(.caption2).foregroundStyle(.secondary)
+                .foregroundStyle(.primary)
+                .contentTransition(.numericText(value: Double(tokens)))
+                .animation(.easeOut(duration: 0.3), value: tokens)
+            Text(label).font(Theme.Typography.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -70,12 +73,12 @@ struct ToolCallView: View {
 
         return VStack(alignment: .leading, spacing: 8) {
             Text("工具调用排行")
-                .font(.caption.weight(.semibold))
+                .font(Theme.Typography.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
             if ranked.isEmpty {
                 Text("区间内无工具调用数据")
-                    .font(.caption)
+                    .font(Theme.Typography.body)
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 14)
@@ -84,19 +87,19 @@ struct ToolCallView: View {
                 // 表头
                 HStack(spacing: 8) {
                     Text("模型")
-                        .font(.system(size: 9))
+                        .font(Theme.Typography.captionMonospaced)
                         .foregroundStyle(.tertiary)
                         .frame(width: 110, alignment: .leading)
                     Text("工具调用")
-                        .font(.system(size: 9))
+                        .font(Theme.Typography.captionMonospaced)
                         .foregroundStyle(.tertiary)
                         .frame(maxWidth: .infinity)
                     Text("次数")
-                        .font(.system(size: 9))
+                        .font(Theme.Typography.captionMonospaced)
                         .foregroundStyle(.tertiary)
                         .frame(width: 44, alignment: .trailing)
                     Text("次/消息")
-                        .font(.system(size: 9))
+                        .font(Theme.Typography.captionMonospaced)
                         .foregroundStyle(.tertiary)
                         .frame(width: 44, alignment: .trailing)
                 }
@@ -106,14 +109,14 @@ struct ToolCallView: View {
                     HStack(spacing: 8) {
                         HStack(spacing: 6) {
                             Circle().fill(Theme.modelColor(u.model + u.provider)).frame(width: 8, height: 8)
-                            VStack(alignment: .leading, spacing: 0) {
+                            VStack(alignment: .leading, spacing: 1) {
                                 Text(u.model)
-                                    .font(.caption.weight(.medium))
+                                    .font(Theme.Typography.body.weight(.medium))
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                                 if !providerName.isEmpty {
                                     Text(providerName)
-                                        .font(.system(size: 8))
+                                        .font(Theme.Typography.caption)
                                         .foregroundStyle(.tertiary)
                                         .lineLimit(1)
                                 }
@@ -122,19 +125,19 @@ struct ToolCallView: View {
                         .frame(width: 110, alignment: .leading)
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 3).fill(.quaternary.opacity(0.4))
-                                RoundedRectangle(cornerRadius: 3)
+                                RoundedRectangle(cornerRadius: Theme.Radius.bar, style: .continuous).fill(.quaternary.opacity(0.4))
+                                RoundedRectangle(cornerRadius: Theme.Radius.bar, style: .continuous)
                                     .fill(Theme.tokenCacheRead.opacity(0.85))
                                     .frame(width: max(4, geo.size.width * CGFloat(Double(u.toolCallCount) / Double(maxTools))))
                             }
                         }
-                        .frame(height: 10)
+                        .frame(height: 8)
                         Text("\(u.toolCallCount)")
-                            .font(.caption2.monospacedDigit())
+                            .font(Theme.Typography.captionMonospaced)
                             .foregroundStyle(.secondary)
                             .frame(width: 44, alignment: .trailing)
                         Text(String(format: "%.2f", u.toolCallsPerMsg))
-                            .font(.caption2.monospacedDigit())
+                            .font(Theme.Typography.captionMonospaced)
                             .foregroundStyle(.tertiary)
                             .frame(width: 44, alignment: .trailing)
                     }
@@ -142,14 +145,14 @@ struct ToolCallView: View {
                 }
                 if ranked.count > 8 {
                     Text("+ 其余 \(ranked.count - 8) 个模型未展示")
-                        .font(.caption2)
+                        .font(Theme.Typography.caption)
                         .foregroundStyle(.tertiary)
                 }
             }
         }
-        .padding(12)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(14)
+        .background(Theme.cardBackground(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 
     // MARK: - Trend
@@ -169,12 +172,12 @@ struct ToolCallView: View {
 
         return VStack(alignment: .leading, spacing: 8) {
             Text("工具调用趋势")
-                .font(.caption.weight(.semibold))
+                .font(Theme.Typography.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
             if display.isEmpty {
                 Text("区间内无工具调用趋势数据")
-                    .font(.caption)
+                    .font(Theme.Typography.body)
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 12)
@@ -186,15 +189,15 @@ struct ToolCallView: View {
                         VStack(spacing: 2) {
                             if display.count <= 14 {
                                 Text("\(d.toolCalls)")
-                                    .font(.system(size: 8, design: .monospaced))
+                                    .font(Theme.Typography.captionMonospaced)
                                     .foregroundStyle(.secondary)
                             }
-                            RoundedRectangle(cornerRadius: 2)
+                            RoundedRectangle(cornerRadius: Theme.Radius.bar, style: .continuous)
                                 .fill(Theme.tokenCacheRead.opacity(0.85))
                                 .frame(height: barHeight(d.toolCalls, max: maxTools))
                             if display.count <= 14 {
                                 Text(String(d.date.suffix(5)))
-                                    .font(.system(size: 8))
+                                    .font(Theme.Typography.caption)
                                     .foregroundStyle(.tertiary)
                             }
                         }
@@ -204,9 +207,9 @@ struct ToolCallView: View {
                 .frame(height: display.count > 14 ? 56 : 70)
             }
         }
-        .padding(12)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(14)
+        .background(Theme.cardBackground(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 
     /// 按周聚合（周一为周首），用于 range=all

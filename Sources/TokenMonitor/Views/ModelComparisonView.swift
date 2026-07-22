@@ -11,6 +11,7 @@ import SwiftUI
 
 struct ModelComparisonView: View {
     @ObservedObject var viewModel: DashboardViewModel
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -25,29 +26,29 @@ struct ModelComparisonView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("模型对比")
-                    .font(.caption.weight(.semibold))
+                    .font(Theme.Typography.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text("\(viewModel.models.count) 个模型")
-                    .font(.caption2)
+                    .font(Theme.Typography.caption)
                     .foregroundStyle(.tertiary)
             }
 
             if viewModel.models.isEmpty {
                 Text("区间内无数据")
-                    .font(.caption)
+                    .font(Theme.Typography.body)
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 20)
             } else {
                 // 表头
                 HStack(spacing: 4) {
-                    Text("模型").font(.system(size: 9)).foregroundStyle(.tertiary).frame(maxWidth: .infinity, alignment: .leading)
-                    Text("In").font(.system(size: 9)).foregroundStyle(.tertiary).frame(width: 38, alignment: .trailing)
-                    Text("CWr").font(.system(size: 9)).foregroundStyle(.tertiary).frame(width: 38, alignment: .trailing)
-                    Text("CRd").font(.system(size: 9)).foregroundStyle(.tertiary).frame(width: 38, alignment: .trailing)
-                    Text("Out").font(.system(size: 9)).foregroundStyle(.tertiary).frame(width: 38, alignment: .trailing)
-                    Text("Msgs").font(.system(size: 9)).foregroundStyle(.tertiary).frame(width: 32, alignment: .trailing)
+                    Text("模型").font(Theme.Typography.captionMonospaced).foregroundStyle(.tertiary).frame(maxWidth: .infinity, alignment: .leading)
+                    Text("In").font(Theme.Typography.captionMonospaced).foregroundStyle(.tertiary).frame(width: 38, alignment: .trailing)
+                    Text("CWr").font(Theme.Typography.captionMonospaced).foregroundStyle(.tertiary).frame(width: 38, alignment: .trailing)
+                    Text("CRd").font(Theme.Typography.captionMonospaced).foregroundStyle(.tertiary).frame(width: 38, alignment: .trailing)
+                    Text("Out").font(Theme.Typography.captionMonospaced).foregroundStyle(.tertiary).frame(width: 38, alignment: .trailing)
+                    Text("Msgs").font(Theme.Typography.captionMonospaced).foregroundStyle(.tertiary).frame(width: 32, alignment: .trailing)
                 }
                 Divider()
                 // 表体（最多展示 8 个，避免面板溢出）
@@ -56,14 +57,14 @@ struct ModelComparisonView: View {
                 }
                 if viewModel.models.count > 8 {
                     Text("+ 其余 \(viewModel.models.count - 8) 个模型未展示")
-                        .font(.caption2)
+                        .font(Theme.Typography.caption)
                         .foregroundStyle(.tertiary)
                 }
             }
         }
-        .padding(12)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(14)
+        .background(Theme.cardBackground(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 
     private func modelRow(_ u: ModelUsage) -> some View {
@@ -72,9 +73,9 @@ struct ModelComparisonView: View {
             HStack(spacing: 4) {
                 Circle().fill(Theme.modelColor(u.model + u.provider)).frame(width: 6, height: 6)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(u.model).font(.caption2.weight(.medium)).lineLimit(1)
+                    Text(u.model).font(Theme.Typography.caption.weight(.medium)).lineLimit(1)
                     if !providerName.isEmpty {
-                        Text(providerName).font(.system(size: 8)).foregroundStyle(.tertiary).lineLimit(1)
+                        Text(providerName).font(Theme.Typography.caption).foregroundStyle(.tertiary).lineLimit(1)
                     }
                 }
             }
@@ -90,7 +91,7 @@ struct ModelComparisonView: View {
 
     private func cell(_ v: Int) -> some View {
         Text(formatTokens(v))
-            .font(.system(size: 9, design: .monospaced))
+            .font(Theme.Typography.captionMonospaced)
             .foregroundStyle(.secondary)
             .frame(width: 38, alignment: .trailing)
             .lineLimit(1)
@@ -102,11 +103,11 @@ struct ModelComparisonView: View {
     private var compositionCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Token 构成对比")
-                .font(.caption.weight(.semibold))
+                .font(Theme.Typography.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
             if viewModel.models.isEmpty {
-                Text("无数据").font(.caption2).foregroundStyle(.tertiary)
+                Text("无数据").font(Theme.Typography.caption).foregroundStyle(.tertiary)
             } else {
                 let maxTotal = viewModel.models.map(\.totalTokens).max() ?? 1
                 ForEach(viewModel.models.prefix(6)) { u in
@@ -116,9 +117,9 @@ struct ModelComparisonView: View {
 
             legend
         }
-        .padding(12)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(14)
+        .background(Theme.cardBackground(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 
     private func compositionBar(_ u: ModelUsage, maxTotal: Int) -> some View {

@@ -91,7 +91,7 @@ struct ContentView: View {
             Spacer()
         }
         .padding(3)
-        .background(.regularMaterial)
+        .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control + 2, style: .continuous))
     }
 
@@ -178,8 +178,8 @@ struct ContentView: View {
                 }
             }
             .padding(3)
-            .background(.regularMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
 
             Spacer()
 
@@ -192,8 +192,8 @@ struct ContentView: View {
                 }
             }
             .padding(3)
-            .background(.regularMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
         }
     }
 

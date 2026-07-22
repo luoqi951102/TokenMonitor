@@ -233,14 +233,58 @@ final class MenuBarManager: NSObject {
     }
 
     // MARK: - Menu Bar Icon
+    //
+    // 不再依赖 SF Symbol `chart.bar.xaxis`（任何开发者都能用、产品没视觉身份）。
+    // 自绘单色三柱 + baseline 几何符号，传达 "token 递增 + 测量基线" 的产品语义：
+    //   - 三根递增竖柱：input → cache → output 的 token 流转
+    //   - 底部水平基线：测量 / 监控的视觉锚点
+    // 单色 + isTemplate = true，菜单栏深浅模式自动着色，跟 Apple 工具图标等价。
 
     private lazy var menuBarIcon: NSImage? = {
-        // SF Symbols 渲染为模板图，支持暗黑模式
-        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-        let image = NSImage(systemSymbolName: "chart.bar.xaxis", accessibilityDescription: "Token Monitor")?
-            .withSymbolConfiguration(config)
-        image?.isTemplate = true
-        image?.size = Theme.menuBarIconSize
+        let size = Theme.menuBarIconSize                  // 18×18
+        let image = NSImage(size: size)
+        image.lockFocus()
+
+        // 柱子布局：左中右三根，等距递增
+        // 16×16 viewBox 内坐标（再 scale 到实际 size）
+        let barWidth: CGFloat = 2.4
+        let barRadius: CGFloat = 0.6
+        let baselineY: CGFloat = 3.0
+        let baselineHeight: CGFloat = 1.5
+
+        // 三根柱子的 (x, height)：递增形如 input→output
+        let bars: [(CGFloat, CGFloat)] = [
+            (3.5, 5.5),    // 第 1 根：最矮
+            (7.8, 8.5),    // 第 2 根：中
+            (12.1, 11.5),  // 第 3 根：最高
+        ]
+        // 把 16×16 viewBox 映射到 18×18 image：每坐标乘 scale 并偏移
+        let scale = size.width / 16.0
+        let transform = NSAffineTransform()
+        transform.scale(by: scale)
+
+        NSGraphicsContext.current?.saveGraphicsState()
+        transform.concat()
+
+        // 柱子（圆角矩形）
+        for (x, h) in bars {
+            let rect = NSRect(x: x, y: baselineY + baselineHeight, width: barWidth, height: h)
+            let path = NSBezierPath(roundedRect: rect, xRadius: barRadius, yRadius: barRadius)
+            path.fill()
+        }
+
+        // 底部基线：略宽于柱阵，opacity 0.55
+        // appleTemplate 模式下颜色会被 menu bar tint 自动 mask，因此用 black + alpha 表示淡化
+        let baselineRect = NSRect(x: 2.5, y: baselineY, width: 13, height: baselineHeight)
+        let baselinePath = NSBezierPath(roundedRect: baselineRect, xRadius: 0.5, yRadius: 0.5)
+        NSColor.black.withAlphaComponent(0.55).setFill()
+        baselinePath.fill()
+
+        NSGraphicsContext.current?.restoreGraphicsState()
+        image.unlockFocus()
+
+        image.isTemplate = true                            // 单色模板：菜单栏深浅自动适配
+        image.accessibilityDescription = "Token Monitor"
         return image
     }()
 

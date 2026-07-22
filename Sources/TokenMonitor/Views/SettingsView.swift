@@ -5,6 +5,7 @@ import AppKit
 
 struct SettingsView: View {
     @ObservedObject var viewModel: DashboardViewModel
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ScrollView {
@@ -326,14 +327,14 @@ struct SettingsView: View {
                 Image(systemName: icon)
                     .foregroundStyle(Theme.brand)
                 Text(title)
-                    .font(.headline)
+                    .font(Theme.Typography.title)
                 Spacer()
             }
             content()
         }
         .padding(14)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(Theme.cardBackground(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 
     private func row(label: String, value: String) -> some View {
