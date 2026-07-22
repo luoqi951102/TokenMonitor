@@ -23,30 +23,23 @@ struct FloatingWidgetView: View {
     var body: some View {
         ZStack {
             // 实色背景（比 ultraThinMaterial 更可读）
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            // 圆角对齐 Theme.Radius.panel，跟描边、阴影口径统一
+            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
                 .fill(backgroundMaterial)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
                         .strokeBorder(
-                            colorScheme == .dark ? Color.white.opacity(0.20) : Color.black.opacity(0.10),
+                            colorScheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.06),
                             lineWidth: 1
                         )
                 }
 
-            // 顶部品牌渐变光晕（淡淡的，不抢主体）
-            LinearGradient(
-                colors: [
-                    Theme.brand.opacity(0.18),
-                    Color.clear,
-                ],
-                startPoint: .top,
-                endPoint: .center
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            // 不再叠顶部品牌光晕（Slack/Notion 风，反 Apple HIG）；
+            // 把"光感"交给整张面板的材质 + 边界 hairline 自然承担。
 
             content
         }
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.4 : 0.18), radius: 14, x: 0, y: 8)
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.4 : 0.16), radius: 14, x: 0, y: 8)
         .onReceive(NotificationCenter.default.publisher(for: .floatingWidgetOpacityChanged)) { note in
             if let v = note.object as? Double {
                 opacity = v
@@ -245,13 +238,15 @@ private struct CompactContent: View {
 
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(formatTokens(viewModel.totalTokens))
-                    .font(.system(size: 26, weight: .heavy, design: .rounded))
+                    .font(Theme.Typography.metric)
                     .monospacedDigit()
-                    .foregroundStyle(Theme.brand)
+                    .foregroundStyle(.primary)
+                    .contentTransition(.numericText(value: Double(viewModel.totalTokens)))
+                    .animation(.easeOut(duration: 0.3), value: viewModel.totalTokens)
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
                 Text("tokens")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(Theme.Typography.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
             }
@@ -259,11 +254,15 @@ private struct CompactContent: View {
 
             HStack(spacing: 12) {
                 Label("\(viewModel.totalMsgs)", systemImage: "bubble.right")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(Theme.Typography.body.weight(.semibold))
                     .foregroundStyle(.secondary)
+                    .contentTransition(.numericText(value: Double(viewModel.totalMsgs)))
+                    .animation(.easeOut(duration: 0.3), value: viewModel.totalMsgs)
                 Label("\(viewModel.totalToolCalls)", systemImage: "wrench.and.screwdriver")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(Theme.Typography.body.weight(.semibold))
                     .foregroundStyle(.secondary)
+                    .contentTransition(.numericText(value: Double(viewModel.totalToolCalls)))
+                    .animation(.easeOut(duration: 0.3), value: viewModel.totalToolCalls)
                 Spacer()
             }
             .padding(.horizontal, 10)
@@ -302,13 +301,15 @@ private struct MediumContent: View {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(formatTokens(viewModel.totalTokens))
-                        .font(.system(size: 22, weight: .heavy, design: .rounded))
+                        .font(Theme.Typography.metric)
                         .monospacedDigit()
-                        .foregroundStyle(Theme.brand)
+                        .foregroundStyle(.primary)
+                        .contentTransition(.numericText(value: Double(viewModel.totalTokens)))
+                        .animation(.easeOut(duration: 0.3), value: viewModel.totalTokens)
                         .minimumScaleFactor(0.6)
                         .lineLimit(1)
                     Text("总 Token")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(Theme.Typography.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 4)
@@ -443,13 +444,15 @@ private struct LargeContent: View {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(formatTokens(viewModel.totalTokens))
-                        .font(.system(size: 26, weight: .heavy, design: .rounded))
+                        .font(Theme.Typography.metric)
                         .monospacedDigit()
-                        .foregroundStyle(Theme.brand)
+                        .foregroundStyle(.primary)
+                        .contentTransition(.numericText(value: Double(viewModel.totalTokens)))
+                        .animation(.easeOut(duration: 0.3), value: viewModel.totalTokens)
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)
                     Text("总 Token")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(Theme.Typography.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 4)

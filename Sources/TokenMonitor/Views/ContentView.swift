@@ -78,13 +78,13 @@ struct ContentView: View {
                 Button(action: { tab = t }) {
                     HStack(spacing: 4) {
                         Image(systemName: t.icon).font(.system(size: 10))
-                        Text(t.label).font(.caption.weight(tab == t ? .semibold : .regular))
+                        Text(t.label).font(Theme.Typography.body.weight(tab == t ? .semibold : .regular))
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
-                    .background(tab == t ? Theme.brand.opacity(0.18) : .clear)
+                    .background(tab == t ? Theme.brand.opacity(0.12) : .clear)
                     .foregroundStyle(tab == t ? Theme.brand : .primary)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
@@ -92,7 +92,7 @@ struct ContentView: View {
         }
         .padding(3)
         .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control + 2, style: .continuous))
     }
 
     // MARK: - Overview Tab
@@ -114,15 +114,15 @@ struct ContentView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Image(systemName: "chart.bar.xaxis")
-                .font(.system(size: 22, weight: .semibold))
+                .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(Theme.brandGradient)
                 .frame(width: 22, height: 22)
 
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text("Token Monitor")
-                    .font(.title3.weight(.semibold))
+                    .font(Theme.Typography.title)
                 Text(viewModel.syncStatusText)
-                    .font(.caption2)
+                    .font(Theme.Typography.caption)
                     .foregroundStyle(.secondary)
             }
 
@@ -209,12 +209,12 @@ struct ContentView: View {
     private func filterChip(_ title: String, isActive: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.caption.weight(isActive ? .semibold : .regular))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(isActive ? Theme.brand.opacity(0.18) : .clear)
+                .font(Theme.Typography.body.weight(isActive ? .semibold : .regular))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(isActive ? Theme.brand.opacity(0.12) : .clear)
                 .foregroundStyle(isActive ? Theme.brand : .primary)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -223,42 +223,44 @@ struct ContentView: View {
 
     private var kpiRow: some View {
         HStack(spacing: 8) {
-            kpi(label: "总 Token", value: formatTokens(viewModel.totalTokens), color: Theme.brand)
-            kpi(label: "消息数", value: formatNumber(viewModel.totalMsgs), color: Theme.tokenCacheWrite)
-            kpi(label: "工具调用", value: formatNumber(viewModel.totalToolCalls), color: Theme.tokenCacheRead)
+            kpi(label: "总 Token", value: formatTokens(viewModel.totalTokens), tokens: viewModel.totalTokens)
+            kpi(label: "消息数", value: formatNumber(viewModel.totalMsgs), tokens: viewModel.totalMsgs)
+            kpi(label: "工具调用", value: formatNumber(viewModel.totalToolCalls), tokens: viewModel.totalToolCalls)
         }
     }
 
-    private func kpi(label: String, value: String, color: Color) -> some View {
+    private func kpi(label: String, value: String, tokens: Int) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(value)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .font(Theme.Typography.metric)
                 .monospacedDigit()
-                .foregroundStyle(color)
+                .foregroundStyle(.primary)
+                .contentTransition(.numericText(value: Double(tokens)))
+                .animation(.easeOut(duration: 0.3), value: tokens)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Text(label)
-                .font(.caption2)
+                .font(Theme.Typography.caption)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 8)
-        .padding(.horizontal, 10)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .background(Theme.cardBackground(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 
     // MARK: - Top Models
 
     private var topModelsCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Top 模型")
-                    .font(.caption.weight(.medium))
+                    .font(Theme.Typography.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text("\(viewModel.models.count) 个模型 · 切到「模型」tab 看全部")
-                    .font(.caption2)
+                    .font(Theme.Typography.caption)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -266,7 +268,7 @@ struct ContentView: View {
 
             if viewModel.models.isEmpty {
                 Text(viewModel.hasDB ? "区间内无数据" : "未连接到 ccusage.db")
-                    .font(.caption)
+                    .font(Theme.Typography.body)
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 16)
@@ -278,9 +280,9 @@ struct ContentView: View {
                 }
             }
         }
-        .padding(12)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(14)
+        .background(Theme.cardBackground(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 
     private func modelBar(_ usage: ModelUsage, maxTotal: Int) -> some View {
@@ -289,15 +291,15 @@ struct ContentView: View {
         return HStack(spacing: 8) {
             Circle()
                 .fill(Theme.modelColor(usage.model + usage.provider))
-                .frame(width: 8, height: 8)
-            VStack(alignment: .leading, spacing: 0) {
+                .frame(width: 7, height: 7)
+            VStack(alignment: .leading, spacing: 1) {
                 Text(usage.model)
-                    .font(.caption.weight(.medium))
+                    .font(Theme.Typography.body.weight(.medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 if !providerName.isEmpty {
                     Text(providerName)
-                        .font(.system(size: 8))
+                        .font(Theme.Typography.caption)
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                 }
@@ -305,16 +307,16 @@ struct ContentView: View {
             .frame(width: 108, alignment: .leading)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
+                    RoundedRectangle(cornerRadius: Theme.Radius.bar, style: .continuous)
                         .fill(.quaternary.opacity(0.4))
-                    RoundedRectangle(cornerRadius: 3)
+                    RoundedRectangle(cornerRadius: Theme.Radius.bar, style: .continuous)
                         .fill(Theme.modelColor(usage.model + usage.provider).opacity(0.85))
                         .frame(width: max(4, geo.size.width * pct))
                 }
             }
-            .frame(height: 10)
+            .frame(height: 8)
             Text(formatTokens(usage.totalTokens))
-                .font(.caption2.monospacedDigit())
+                .font(Theme.Typography.captionMonospaced)
                 .foregroundStyle(.secondary)
                 .frame(width: 52, alignment: .trailing)
         }
@@ -338,11 +340,11 @@ struct ContentView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("趋势")
-                    .font(.caption.weight(.medium))
+                    .font(Theme.Typography.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(viewModel.rangeLabel)
-                    .font(.caption2)
+                    .font(Theme.Typography.caption)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -350,7 +352,7 @@ struct ContentView: View {
 
             if displayData.isEmpty {
                 Text("区间内无数据")
-                    .font(.caption)
+                    .font(Theme.Typography.body)
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 12)
@@ -364,18 +366,18 @@ struct ContentView: View {
                             // 柱多时只显示部分柱顶数字，避免拥挤
                             if displayData.count <= 14 {
                                 Text(formatTokens(d.tokens))
-                                    .font(.system(size: 8, design: .monospaced))
+                                    .font(Theme.Typography.captionMonospaced)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.6)
                             }
-                            RoundedRectangle(cornerRadius: 2)
+                            RoundedRectangle(cornerRadius: Theme.Radius.bar, style: .continuous)
                                 .fill(Theme.chartBar)
                                 .frame(height: barHeight(d.tokens, max: maxTokens))
                             // 柱多时只显示首尾日期
                             if displayData.count <= 14 {
                                 Text(String(d.date.suffix(5)))
-                                    .font(.system(size: 8))
+                                    .font(Theme.Typography.caption)
                                     .foregroundStyle(.tertiary)
                             }
                         }
@@ -385,9 +387,9 @@ struct ContentView: View {
                 .frame(height: displayData.count > 14 ? 60 : 90)
             }
         }
-        .padding(12)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(14)
+        .background(Theme.cardBackground(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 
     private func barHeight(_ v: Int, max m: Int) -> CGFloat {
