@@ -283,10 +283,61 @@ private struct CompactContent: View {
                 Spacer()
             }
             .padding(.horizontal, 10)
-            .padding(.bottom, 8)
-            Spacer(minLength: 0)
+
+            // 7-day mini sparkline：1px hairline，跟读完 KPI 行后能立即看到近 7 天走势
+            // 只有 range=today 时显示，避免在 other range 上给重复信息
+            if viewModel.range == .today, !viewModel.daily.isEmpty {
+                MiniSparkline(daily: Array(viewModel.daily.suffix(7)))
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 8)
+            } else {
+                Spacer(minLength: 0).padding(.bottom, 8)
+            }
         }
         .padding(.top, 8)
+    }
+}
+
+// MARK: - Mini Sparkline（极小 1px hairline，给 Compact 用）
+
+private struct MiniSparkline: View {
+    let daily: [DailyTotal]
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let maxTokens = max(daily.map(\.tokens).max() ?? 1, 1)
+            let stepX = daily.count > 1 ? w / CGFloat(daily.count - 1) : w
+            let points = daily.enumerated().map { (i, d) -> CGPoint in
+                let x = CGFloat(i) * stepX
+                let y = h - (CGFloat(d.tokens) / CGFloat(maxTokens)) * (h - 2) - 1
+                return CGPoint(x: x, y: y)
+            }
+
+            ZStack {
+                Path { p in
+                    guard let first = points.first else { return }
+                    p.move(to: first)
+                    for pt in points.dropFirst() {
+                        p.addLine(to: pt)
+                    }
+                }
+                .stroke(
+                    Theme.brand.opacity(0.55),
+                    style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round)
+                )
+
+                // 末端 accent dot（最新一天）
+                if let last = points.last {
+                    Circle()
+                        .fill(Theme.brand)
+                        .frame(width: 3, height: 3)
+                        .position(last)
+                }
+            }
+        }
+        .frame(height: 18)
     }
 }
 

@@ -12,6 +12,7 @@ struct ContentView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var tab: Tab = .overview
+    @State private var hoveringModelID: String? = nil
 
     enum Tab: String, CaseIterable {
         case overview
@@ -293,6 +294,9 @@ struct ContentView: View {
     private func modelBar(_ usage: ModelUsage, maxTotal: Int) -> some View {
         let pct = maxTotal > 0 ? Double(usage.totalTokens) / Double(maxTotal) : 0
         let providerName = providerDisplayName(usage.provider, model: usage.model)
+        let providerFull = providerName.isEmpty
+            ? usage.model
+            : "\(usage.model) · \(providerName)"
         return HStack(spacing: 8) {
             Circle()
                 .fill(Theme.modelColor(usage.model + usage.provider))
@@ -326,6 +330,16 @@ struct ContentView: View {
                 .frame(width: 52, alignment: .trailing)
         }
         .frame(height: 26)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                .fill(hoveringModelID == usage.id ? Color.primary.opacity(0.04) : .clear)
+        )
+        .contentShape(Rectangle())
+        .onHover { hoveringModelID = $0 ? usage.id : nil }
+        .help(providerFull)
+        .animation(.easeInOut(duration: 0.15), value: hoveringModelID)
     }
 
     // MARK: - Trend
