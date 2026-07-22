@@ -171,20 +171,25 @@ func lastPathComponent(_ raw: String) -> String {
 /// ZCode 的 provider_id 有几种格式：
 ///   - "builtin:bigmodel-coding-plan" → "智谱官方"
 ///   - "builtin:xxx"                  → "官方 xxx"
-///   - UUID（如 "7aff2f39-..."）       → "自定义 7aff2f39"（取前 8 位）
-///   - 空（Claude 日志没 provider）    → ""（会触发 model 维度推断）
+///   - UUID（如 "7aff2f39-..."）       → 走内置 UUID 映射表
+///   - 空（Claude 日志没 provider）    → 走 model 维度推断
+///
+/// 内置 UUID 映射（用户提供的）：
+///   7aff2f39-217e-4f1c-82f6-b8e857a9be22 → 浙算 MaaS
+///   e42dedab-efa4-4e63-9de5-8138073a2383 → 词元之芯·Token工厂
+///   f2b1acc3-7c19-4a25-a6b5-f9783a0d91f9 → 火山引擎
 ///
 /// model 维度推断（用于 Claude 日志无 provider 场景）：
 ///   - "glm-52-w4a8-kv"  → 词元之芯·Token工厂
 ///   - "glm-52-w4a8-kvp" → 词元之芯·Token工厂
-///   - "minimax-m3"        → Minimax
-///   - "qwen3.7-plus"      → 通义千问
-///   - "doubao-seed-2.0-pro" → 豆包
+///   - "qwen3*"           → 通义千问
+///   - "doubao-*"         → 豆包
+///   - "deepseek-v4-pro"  → 火山引擎
+///   - "minimax-*"        → Minimax
 ///
 /// 如果用户在 Settings 里配置了 provider 别名映射，优先用别名（按完整 key 匹配）。
 func providerDisplayName(_ provider: String, model: String = "") -> String {
     // 用户自定义别名（存 UserDefaults：provider_alias_<key> -> 名字）
-    // key 格式：provider_alias_<provider>__<model>，用于区分"同 provider 不同 model"
     let aliasKeyModel = "provider_alias_\(provider)__\(model)"
     if !provider.isEmpty, let alias = UserDefaults.standard.string(forKey: aliasKeyModel), !alias.isEmpty {
         return alias
@@ -206,7 +211,10 @@ func providerDisplayName(_ provider: String, model: String = "") -> String {
             default: return "官方·\(suffix)"
             }
         }
-        // UUID 格式：取前 8 位
+        // UUID 格式：查内置 UUID 映射表
+        if let name = ProviderUUIDMap[provider] {
+            return name
+        }
         if provider.contains("-") && provider.count >= 8 {
             let short = String(provider.prefix(8))
             return "自定义·\(short)"
@@ -232,7 +240,7 @@ func inferProviderFromModel(_ model: String) -> String {
     if model.hasPrefix("doubao-") {
         return "豆包"
     }
-    // 火山引擎（豆包官方外的）
+    // 火山引擎
     if model.hasPrefix("deepseek-v4-pro") {
         return "火山引擎"
     }
@@ -243,3 +251,11 @@ func inferProviderFromModel(_ model: String) -> String {
     // 其他没匹配的：不显示后缀
     return ""
 }
+
+/// UUID provider 映射表（用户提供的供应商名）。
+/// 这些 UUID 是 ZCode model_usage.provider_id 字段，区分同一 model 的不同供应商。
+let ProviderUUIDMap: [String: String] = [
+    "7aff2f39-217e-4f1c-82f6-b8e857a9be22": "浙算 MaaS",
+    "e42dedab-efa4-4e63-9de5-8138073a2383": "词元之芯·Token工厂",
+    "f2b1acc3-7c19-4a25-a6b5-f9783a0d91f9": "火山引擎",
+]
