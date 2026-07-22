@@ -176,16 +176,21 @@ struct FloatingFilterBar: View {
 // MARK: - 手动刷新按钮（悬浮窗右上角）
 //
 // 点击触发 viewModel.manualSync()：
-//  - sandbox 下真实 sync 由 launchd / 终端执行，这里只重新打开 DB + refresh + pushWidgetSnapshot
-//  - 旋转动画跟 viewModel.syncRunner.isSyncing 联动，sync 完成后停在原位
-// 三种尺寸共用，size 参数控制图标和命中区大小。
+//  - sandbox 下真实 sync 由 launchd / 终端执行，这里只重新读 DB + refresh + pushWidgetSnapshot
+//  - 旋转用经典 rotationEffect + repeatForever（兼容 macOS 14+，
+//    SF Symbol .rotate/.repeat 在 macOS 15+ 才有，不强依赖）
+//  - hit 区遵循 Apple HIG 最低 24×24，避免在小菜单里手滑点空
+//  - hover 态：背景 0.06 系统灰圈，跟 macOS Tahoe 按钮 hover 行为对齐
+// 三种尺寸共用，size 控制视觉图标大小，hitSize 固定 ≥ 24。
 
 private struct RefreshIconButton: View {
     @ObservedObject var viewModel: DashboardViewModel
     var size: CGFloat = 12
-    var hitSize: CGFloat = 20
+    var hitSize: CGFloat = 24  // Apple HIG 最低触达尺寸
 
     @State private var rotating: Bool = false
+    @State private var hovering: Bool = false
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Button {
@@ -196,22 +201,34 @@ private struct RefreshIconButton: View {
                 rotating = false
             }
         } label: {
-            Image(systemName: "arrow.clockwise")
-                .font(.system(size: size, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .rotationEffect(.degrees(rotating ? 360 : 0))
-                .animation(
-                    rotating
-                        ? .linear(duration: 0.8).repeatForever(autoreverses: false)
-                        : .easeOut(duration: 0.2),
-                    value: rotating
-                )
-                .frame(width: hitSize, height: hitSize)
-                .contentShape(Rectangle())
+            ZStack {
+                // hover 圈含（macOS Tahoe 按钮 hover 行为：极淡灰圈）
+                if hovering {
+                    Circle()
+                        .fill(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.06))
+                        .frame(width: hitSize, height: hitSize)
+                }
+                // 图标本体：semibold → medium，更克制
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: size, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(rotating ? 360 : 0))
+                    .animation(
+                        rotating
+                            ? .linear(duration: 0.9).repeatForever(autoreverses: false)
+                            : .easeOut(duration: 0.2),
+                        value: rotating
+                    )
+                    .frame(width: size, height: size)
+            }
+            .frame(width: hitSize, height: hitSize)
+            .contentShape(Rectangle())
+            .onHover { hovering = $0 }
         }
         .buttonStyle(.plain)
-        .help("重新读取数据库并刷新")
+        .help(rotating ? "同步中..." : "重新读取数据库并刷新")
         .accessibilityLabel("刷新")
+        .animation(.easeInOut(duration: 0.15), value: hovering)
     }
 }
 
@@ -231,7 +248,7 @@ private struct CompactContent: View {
                 Spacer()
                 RangeSwitcher(viewModel: viewModel)
                     .scaleEffect(0.85)
-                RefreshIconButton(viewModel: viewModel, size: 10, hitSize: 16)
+                RefreshIconButton(viewModel: viewModel, size: 10)
                     .padding(.leading, 2)
             }
             .padding(.horizontal, 10)
@@ -288,7 +305,7 @@ private struct MediumContent: View {
                 Text("Token Monitor")
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
-                RefreshIconButton(viewModel: viewModel, size: 11, hitSize: 18)
+                RefreshIconButton(viewModel: viewModel, size: 11)
             }
             .padding(.horizontal, 14)
             .padding(.top, 12)
@@ -431,7 +448,7 @@ private struct LargeContent: View {
                 Text("Token Monitor")
                     .font(.system(size: 14, weight: .semibold))
                 Spacer()
-                RefreshIconButton(viewModel: viewModel, size: 12, hitSize: 20)
+                RefreshIconButton(viewModel: viewModel, size: 12)
             }
             .padding(.horizontal, 16)
             .padding(.top, 14)

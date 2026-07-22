@@ -220,13 +220,21 @@ struct ContentView: View {
     }
 
     // MARK: - KPI Row
+    //
+    // 三栏 KPI 合并为单一卡片容器，用 hairline Divider 分割。
+    // 比「三个独立卡片拼排」更连贯，留白更通透，跟 macOS Tahoe 系统工具风一致。
 
     private var kpiRow: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 0) {
             kpi(label: "总 Token", value: formatTokens(viewModel.totalTokens), tokens: viewModel.totalTokens)
+            Divider().frame(height: 32).opacity(0.25)
             kpi(label: "消息数", value: formatNumber(viewModel.totalMsgs), tokens: viewModel.totalMsgs)
+            Divider().frame(height: 32).opacity(0.25)
             kpi(label: "工具调用", value: formatNumber(viewModel.totalToolCalls), tokens: viewModel.totalToolCalls)
         }
+        .padding(.vertical, 10)
+        .background(Theme.cardBackground(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 
     private func kpi(label: String, value: String, tokens: Int) -> some View {
@@ -244,10 +252,7 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 10)
         .padding(.horizontal, 12)
-        .background(Theme.cardBackground(for: colorScheme))
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 
     // MARK: - Top Models
@@ -324,9 +329,13 @@ struct ContentView: View {
     }
 
     // MARK: - Trend
+    //
+    // 趋势图两套渲染：
+    //   - 密度 ≤ 14：传统柱状图（每天一根柱，柱顶 + 日期标签可读）
+    //   - 密度 > 14：sparkline（1px hairline Path，末端 accent dot 标最新点）
+    // sparkline 跟 Apple 系统工具的 trend indicator 一致，更轻、更现代。
 
     private var trendCard: some View {
-        // range=all 时区间可能跨数月，按天展示柱太密，最多展示最近 30 天
         let displayData: [DailyTotal] = {
             let cap: Int
             switch viewModel.range {
@@ -356,40 +365,95 @@ struct ContentView: View {
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 12)
-            } else {
+            } else if displayData.count <= 14 {
+                // 稀疏场景仍用柱状图（每柱留有数字 + 日期标签的空间）
                 let maxTokens = displayData.map(\.tokens).max() ?? 1
-                // 柱间距随密度自适应：柱少时间距大、柱多时紧凑
-                let spacing: CGFloat = displayData.count > 20 ? 1.5 : (displayData.count > 10 ? 3 : 5)
+                let spacing: CGFloat = displayData.count > 10 ? 3 : 5
                 HStack(alignment: .bottom, spacing: spacing) {
                     ForEach(displayData) { d in
                         VStack(spacing: 2) {
-                            // 柱多时只显示部分柱顶数字，避免拥挤
-                            if displayData.count <= 14 {
-                                Text(formatTokens(d.tokens))
-                                    .font(Theme.Typography.captionMonospaced)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.6)
-                            }
+                            Text(formatTokens(d.tokens))
+                                .font(Theme.Typography.captionMonospaced)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
                             RoundedRectangle(cornerRadius: Theme.Radius.bar, style: .continuous)
                                 .fill(Theme.chartBar)
                                 .frame(height: barHeight(d.tokens, max: maxTokens))
-                            // 柱多时只显示首尾日期
-                            if displayData.count <= 14 {
-                                Text(String(d.date.suffix(5)))
-                                    .font(Theme.Typography.caption)
-                                    .foregroundStyle(.tertiary)
-                            }
+                            Text(String(d.date.suffix(5)))
+                                .font(Theme.Typography.caption)
+                                .foregroundStyle(.tertiary)
                         }
                         .frame(maxWidth: .infinity)
                     }
                 }
-                .frame(height: displayData.count > 14 ? 60 : 90)
+                .frame(height: 90)
+            } else {
+                // 密集场景用 sparkline（hairline + 末端 accent dot）
+                trendSparkline(displayData)
+                    .frame(height: 56)
             }
         }
         .padding(14)
         .background(Theme.cardBackground(for: colorScheme))
         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+    }
+
+    /// 1px hairline Path sparkline，跟随容器宽度自适应。
+    /// 末端（最新数据点）叠一个 accent color 点，强化"现在"的视觉锚点。
+    private func trendSparkline(_ data: [DailyTotal]) -> some View {
+        let maxTokens = max(data.map(\.tokens).max() ?? 1, 1)
+        let last = data.last?.tokens ?? 0
+
+        return GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let stepX = data.count > 1 ? w / CGFloat(data.count - 1) : w
+            let points = data.enumerated().map { (i, d) -> CGPoint in
+                let x = CGFloat(i) * stepX
+                let y = h - (CGFloat(d.tokens) / CGFloat(maxTokens)) * (h - 4) - 2
+                return CGPoint(x: x, y: y)
+            }
+
+            ZStack {
+                // hairline path
+                Path { p in
+                    guard let first = points.first else { return }
+                    p.move(to: first)
+                    for pt in points.dropFirst() {
+                        p.addLine(to: pt)
+                    }
+                }
+                .stroke(
+                    Theme.brand.opacity(0.55),
+                    style: StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round)
+                )
+
+                // 末端 accent dot（5pt 圆点，1pt 宽白色 ring 跟线分离）
+                if let lastPt = points.last {
+                    Circle()
+                        .fill(Theme.brand)
+                        .frame(width: 5, height: 5)
+                        .overlay(
+                            Circle()
+                                .stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 1)
+                        )
+                        .position(lastPt)
+                }
+
+                // 末端 token 数字（在点上方）
+                if let lastPt = points.last {
+                    Text(formatTokens(last))
+                        .font(Theme.Typography.captionMonospaced)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Theme.cardBackground(for: colorScheme).opacity(0.85))
+                        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                        .position(x: min(lastPt.x, w - 36), y: lastPt.y - 10)
+                }
+            }
+        }
     }
 
     private func barHeight(_ v: Int, max m: Int) -> CGFloat {
