@@ -266,24 +266,27 @@ func inferProviderFromModel(_ model: String) -> String {
     if model == "glm-5.1" || model == "claude-opus-4-8" {
         return "浙算 MaaS"
     }
-    // 通义千问
-    if model.hasPrefix("qwen3") {
-        return "通义千问"
+    // 火山引擎（基于 msg.id 021_ 火山方舟指纹 + 用户确认）
+    // - minimax-m3: 021_ 100%，实际是火山引擎方舟挂的 minimax 模型
+    // - deepseek-v4-pro: 火山方舟部署的 DeepSeek
+    if model == "minimax-m3" || model.hasPrefix("deepseek-v4-pro") {
+        return "火山引擎"
     }
     // 豆包
     if model.hasPrefix("doubao-") {
         return "豆包"
     }
-    // 火山引擎
-    if model.hasPrefix("deepseek-v4-pro") {
-        return "火山引擎"
+    // 通义千问
+    if model.hasPrefix("qwen3") {
+        return "通义千问"
     }
-    // Minimax
+    // Minimax 通用兜底（如未来出现 minimax-* 但不走方舟代理时）
     if model.hasPrefix("minimax-") {
         return "Minimax"
     }
-    // 其他没匹配的（如 glm-5.2 / glm-5.1 / deepseek-v4-flash / claude-opus-4-8）：
+    // 其他没匹配的（如 glm-5.2、deepseek-v4-flash 等）：
     // Claude JSONL 不记 baseURL，事后无法回溯真实供应商，留空待用户补充。
+    // 如果有 baseURL 标签（going-forward sync 写入），优先于本函数返回值。
     return ""
 }
 
