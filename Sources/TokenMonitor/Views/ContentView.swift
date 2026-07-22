@@ -272,8 +272,8 @@ struct ContentView: View {
                     .padding(.vertical, 16)
             } else {
                 let maxTotal = viewModel.models.first?.totalTokens ?? 1
-                // 总览只展示 Top 6，避免面板溢出；完整列表在「模型」tab
-                ForEach(viewModel.topModels(6)) { usage in
+                // 总览只展示 Top 8，避免面板溢出；完整列表在「模型」tab
+                ForEach(viewModel.topModels(8)) { usage in
                     modelBar(usage, maxTotal: maxTotal)
                 }
             }

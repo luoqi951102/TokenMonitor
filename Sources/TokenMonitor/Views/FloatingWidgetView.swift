@@ -457,7 +457,7 @@ private struct LargeContent: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
                 let maxTotal = viewModel.models.first?.totalTokens ?? 1
-                ForEach(viewModel.topModels(5)) { usage in
+                ForEach(viewModel.topModels(8)) { usage in
                     let providerName = providerDisplayName(usage.provider, model: usage.model)
                     HStack(spacing: 6) {
                         Circle()
