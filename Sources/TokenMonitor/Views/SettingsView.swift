@@ -123,13 +123,15 @@ struct SettingsView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
-                // ccusage.db
+                // .claude 目录授权（ccusage.db + 它的 -wal/-shm 副文件都在这里）
+                // 注意：sandbox 下 SQLite 要写 -wal 副文件，单文件 bookmark 不允许创建副文件，
+                // 所以授权整个 .claude 目录而不是 ccusage.db 单文件
                 bookmarkRow(
-                    label: "ccusage.db",
-                    recommendedPath: UsageDBPath.ccusageDefault,
+                    label: ".claude 目录",
+                    recommendedPath: NSHomeDirectory() + "/.claude",
                     key: .ccusageDB,
-                    prompt: "选择 ccusage.db",
-                    allowedTypes: ["sqlite", "db"]
+                    prompt: "选择 .claude 目录",
+                    allowedTypes: nil
                 )
 
                 // ZCode db
@@ -417,8 +419,8 @@ struct SettingsView: View {
         panel.title = prompt
         panel.prompt = "授权"
         panel.allowsMultipleSelection = false
-        // claudeProjectsDir 是目录授权，其余是单文件授权
-        if key == .claudeProjectsDir {
+        // 目录授权：ccusageDB（.claude 目录，要写 -wal/-shm）和 claudeProjectsDir
+        if key == .claudeProjectsDir || key == .ccusageDB {
             panel.canChooseDirectories = true
             panel.canChooseFiles = false
         } else {
@@ -451,9 +453,11 @@ struct SettingsView: View {
     }
 
     private func revealDB() {
-        if let url = BookmarkStore.shared.resolve(.ccusageDB) {
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-            BookmarkStore.shared.release(url)
+        if let dirURL = BookmarkStore.shared.resolve(.ccusageDB) {
+            // bookmark 解出 .claude 目录，选中 ccusage.db 文件
+            let dbURL = dirURL.appendingPathComponent("ccusage.db")
+            NSWorkspace.shared.activateFileViewerSelecting([dbURL])
+            BookmarkStore.shared.release(dirURL)
         } else {
             let url = URL(fileURLWithPath: UsageDBPath.ccusageDefault)
             NSWorkspace.shared.activateFileViewerSelecting([url])

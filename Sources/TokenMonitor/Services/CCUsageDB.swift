@@ -27,24 +27,23 @@ final class CCUsageDB {
     init?(path: String) {
         self.path = path
 
-        // sandbox=true 下：必须先用 security-scoped bookmark 解开路径
-        // sandbox=false 下：bookmark 也没有，直接用传入路径
+        // Key.ccusageDB bookmark 授权的是 **`.claude` 目录**（不是 ccusage.db 文件）。
+        // 原因：sandbox 下 SQLite WAL 模式要创建 -wal / -shm 副文件，单文件 bookmark
+        // 不允许在同目录创建副文件（SQLITE_CANTOPEN rc=14）。授权目录才能读写所有副文件。
+        // 解出目录 URL 后拼 "ccusage.db" 得真实库路径。
         let resolvedPath: String
-        if let bookmarkURL = BookmarkStore.shared.resolve(.ccusageDB) {
-            securityScopedURL = bookmarkURL
-            resolvedPath = bookmarkURL.path
+        if let dirURL = BookmarkStore.shared.resolve(.ccusageDB) {
+            securityScopedURL = dirURL
+            resolvedPath = UsageDBPath.ccusagePath(in: dirURL)
         } else {
+            // sandbox=false 或未授权回退到传入 path
             resolvedPath = path
         }
 
-        // 先确保父目录存在（sandbox 下通常 ~/.claude 已在，但不保证）
-        let parent = (resolvedPath as NSString).deletingLastPathComponent
-        try? FileManager.default.createDirectory(
-            atPath: parent, withIntermediateDirectories: true
-        )
-
-        // 用 URI 形式打开，跟只读端一致（支持 query string）
-        // READWRITE | CREATE：库不存在则新建，存在则可读写
+        // 用 URI 形式打开
+        // READWRITE | CREATE：库不存在则新建，存在则可读写。
+        // 注：还需 entitlement `com.apple.security.files.user-selected.read-write=true`，
+        // 否则 sandbox 强制 read-only，写入时报 SQLITE_READONLY rc=8。
         let uri = "file:\(resolvedPath)"
         var db: OpaquePointer?
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI

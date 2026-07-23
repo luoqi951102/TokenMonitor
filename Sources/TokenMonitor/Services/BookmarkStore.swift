@@ -14,7 +14,12 @@ final class BookmarkStore {
     private let defaults = UserDefaults.standard
 
     enum Key: String {
-        case ccusageDB = "bookmark_ccusage_db"
+        /// **`.claude` 目录授权**（不是 ccusage.db 文件！）
+        /// sandbox 下 SQLite 要写 -wal/-shm 副文件，单文件 bookmark 不允许在同目录
+        /// 创建副文件（SQLITE_CANTOPEN rc=14），所以这里授权整个 .claude 目录。
+        /// 改 key 名以区分旧的 "bookmark_ccusage_db" 文件 bookmark，避免 sandbox
+        /// 误用 stale 旧文件 bookmark。
+        case ccusageDB = "bookmark_claude_dir"
         case zcodeDB = "bookmark_zcode_db"
         case ccUsageExe = "bookmark_cc_usage_exe"
         // Swift sync 私有化新增：扫描 JSONL 需要 projects 目录授权，读 settings.json 需要 settings 文件授权
@@ -23,6 +28,17 @@ final class BookmarkStore {
     }
 
     private init() {}
+
+    /// 迁移用：旧 key 名"bookmark_ccusage_db"曾经授权的是 ccusage.db 单文件，
+    /// 现在切换到目录授权后必须清掉旧 bookmark 否则 sandbox 用 stale 文件
+    /// bookmark 会破坏(用 Key.ccusageDB 已改名天然避开)。
+    /// 启动时调一次清除旧 bookmark。
+    static func clearStaleFileBookmarkIfAny() {
+        let oldKey = "bookmark_ccusage_db"
+        if UserDefaults.standard.data(forKey: oldKey) != nil {
+            UserDefaults.standard.removeObject(forKey: oldKey)
+        }
+    }
 
     // MARK: - Save
 

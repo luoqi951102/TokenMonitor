@@ -25,13 +25,14 @@ final class UsageDB {
     init?(path: String) {
         self.path = path
 
-        // sandbox=true 下：优先用 security-scoped bookmark 授权的 URL
-        // sandbox=false 下：bookmark 也没有，直接用路径
+        // Key.ccusageDB bookmark 授权的是 **`.claude` 目录**（详见 CCUsageDB.init?）。
+        // 解出目录 URL 后拼 "ccusage.db" 得真实库路径。
         let resolvedPath: String
-        if let bookmarkURL = BookmarkStore.shared.resolve(.ccusageDB) {
-            securityScopedURL = bookmarkURL
-            resolvedPath = bookmarkURL.path
+        if let dirURL = BookmarkStore.shared.resolve(.ccusageDB) {
+            securityScopedURL = dirURL
+            resolvedPath = UsageDBPath.ccusagePath(in: dirURL)
         } else {
+            // sandbox=false 或未授权回退到传入 path
             resolvedPath = path
         }
 
@@ -148,5 +149,18 @@ enum UsageDBPath {
         URL(fileURLWithPath: NSHomeDirectory())
             .appendingPathComponent(".zcode/cli/db/db.sqlite")
             .path
+    }
+
+    /// 通过 .claude 目录 bookmark 解出 ccusage.db 的实际可写路径。
+    ///
+    /// 背景：sandbox 下 SQLite 要写 -wal / -shm 副文件，单文件 bookmark 不允许在同
+    /// 目录创建副文件（SQLITE_CANTOPEN rc=14）。所以 ccusageDB bookmark 授权的是
+    /// `~/.claude` 目录本身（不是 ccusage.db 文件），sandbox 才能读写目录内任意文件。
+    /// 调用方需持有 bookmark URL（startAccessingSecurityScopedResource 已调）。
+    ///
+    /// - Parameter dirURL: 已 startAccessing 的 .claude 目录 URL
+    /// - Returns: dirURL/ccusage.db 的路径
+    static func ccusagePath(in dirURL: URL) -> String {
+        dirURL.appendingPathComponent("ccusage.db").path
     }
 }

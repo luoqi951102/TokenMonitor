@@ -2,17 +2,19 @@ import AppKit
 
 // MARK: - SandboxAuthorizer
 //
-// 集中管理 Swift sync 私有化所需的三个 NSOpenPanel 授权流程：
+// 集中管理 Swift sync 私有化所需的关键授权检查 + 三处 NSOpenPanel 引导：
 //   - claudeProjectsDir：~/.claude/projects 目录（扫 JSONL 必需，目录授权）
 //   - zcodeDB：~/.zcode/cli/db/db.sqlite 文件（读 ZCode 原生库，单文件授权）
 //   - claudeSettings：~/.claude/settings.json 文件（读当前 baseURL，单文件授权）
+//   - ccusageDB：~/.claude 目录（写 ccusage.db + -wal/-shm 副文件，目录授权）
+//     由 SettingsView 的 .ccusageDB bookmarkRow 直接授权（见"数据源授权"卡片）
 //
 // sandbox=true 下，App 要读 sandbox 容器外的文件，必须先通过 NSOpenPanel 让用户
 // 手动授权一次，转 security-scoped bookmark 持久化（BookmarkStore）。
 // 之后启动时 resolve bookmark 还原 URL 即可访问，不必每次弹窗。
 //
-// 与 SettingsView.pickFile() 的区别：pickFile 是文件授权（canChooseFiles=true），
-// 这里 projects 是目录授权（canChooseDirectories=true），所以独立一个集中器。
+// 注：ccusageDB 用目录授权不是文件授权，原因是 sandbox 下 SQLite 要写 -wal/-shm
+// 副文件，单文件 bookmark 不允许创建副文件（SQLITE_CANTOPEN）。
 
 @MainActor
 enum SandboxAuthorizer {

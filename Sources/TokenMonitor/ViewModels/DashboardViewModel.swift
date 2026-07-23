@@ -90,9 +90,9 @@ final class DashboardViewModel: ObservableObject {
 
     private func ccusageMtime() -> Date? {
         let resolvedPath: String
-        if let url = BookmarkStore.shared.resolve(.ccusageDB) {
-            defer { BookmarkStore.shared.release(url) }
-            resolvedPath = url.path
+        if let dirURL = BookmarkStore.shared.resolve(.ccusageDB) {
+            defer { BookmarkStore.shared.release(dirURL) }
+            resolvedPath = UsageDBPath.ccusagePath(in: dirURL)
         } else {
             resolvedPath = UsageDBPath.ccusageDefault
         }

@@ -21,6 +21,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var menuBarManager: MenuBarManager?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // 一次性清理：旧版 ccusage.db 单文件 bookmark（key="bookmark_ccusage_db"），
+        // 0.2.0 起改成 .claude 目录授权（key="bookmark_claude_dir"）以解决 sandbox
+        // 下 SQLite 写 -wal/-shm 副文件被拒的问题。旧 bookmark 不清掉会 stale，但仍
+        // 占 UserDefaults 空间，且 may 让老用户混淆 → 启动即清。
+        BookmarkStore.clearStaleFileBookmarkIfAny()
+
         menuBarManager = MenuBarManager()
         menuBarManager?.bootstrap()
 

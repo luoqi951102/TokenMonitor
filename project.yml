@@ -50,7 +50,8 @@ targets:
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.files.bookmarks.app: true
-        com.apple.security.files.user-selected.read-only: true
+        # read-write 而非 read-only：Swift sync 私有化要写 ~/.claude/ccusage.db
+        com.apple.security.files.user-selected.read-write: true
         com.apple.security.application-groups:
           - N5YV5FV235.group.com.luoqi.tokenmonitor
     settings:

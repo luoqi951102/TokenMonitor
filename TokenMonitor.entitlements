@@ -10,7 +10,8 @@
 	</array>
 	<key>com.apple.security.files.bookmarks.app</key>
 	<true/>
-	<key>com.apple.security.files.user-selected.read-only</key>
+	<!-- read-write 而非 read-only：Swift sync 私有化要写 ~/.claude/ccusage.db -->
+	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
 </dict>
 </plist>
