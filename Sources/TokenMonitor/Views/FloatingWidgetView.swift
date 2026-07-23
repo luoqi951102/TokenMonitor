@@ -425,12 +425,13 @@ private struct MediumContent: View {
                                     .font(.system(size: 9, weight: .medium))
                                     .lineLimit(1)
                                     .truncationMode(.middle)
-                                if !providerName.isEmpty {
-                                    Text(providerName)
-                                        .font(.system(size: 7))
-                                        .foregroundStyle(.tertiary)
-                                        .lineLimit(1)
-                                }
+                                // 次行：provider 后追加来源短标签 CC/ZC（窄空间用短名）
+                                let srcShort = UsageSource(rawValue: usage.source)?.shortLabel ?? usage.source
+                                Text(providerName.isEmpty ? srcShort : "\(providerName) · \(srcShort)")
+                                    .font(.system(size: 7))
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
                             }
                             Spacer(minLength: 2)
                             Text(formatTokens(usage.totalTokens))
@@ -590,12 +591,13 @@ private struct LargeContent: View {
                                 .font(.system(size: 11, weight: .medium))
                                 .lineLimit(1)
                                 .truncationMode(.middle)
-                            if !providerName.isEmpty {
-                                Text(providerName)
-                                    .font(.system(size: 8))
-                                    .foregroundStyle(.tertiary)
-                                    .lineLimit(1)
-                            }
+                            // 次行：provider 后追加来源短标签 CC/ZC（浮窗空间窄用短名）
+                            let srcShort = UsageSource(rawValue: usage.source)?.shortLabel ?? usage.source
+                            Text(providerName.isEmpty ? srcShort : "\(providerName) · \(srcShort)")
+                                .font(.system(size: 8))
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
                         }
                         .frame(width: 110, alignment: .leading)
                         GeometryReader { geo in

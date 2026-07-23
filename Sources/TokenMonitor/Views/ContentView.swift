@@ -296,10 +296,9 @@ struct ContentView: View {
         let providerName = providerDisplayName(usage.provider, model: usage.model)
         // 次行：provider 后追加来源后缀（Claude Code / ZCode），避免同 provider 不同 source 歧义
         // 例：浙算MaaS 同时出现在 Claude Code 和 ZCode，单看 "浙算MaaS" 无法辨认
-        let sourceLabel = UsageSource(rawValue: usage.source)?.displayName ?? usage.source
-        let providerSubText = providerName.isEmpty
-            ? sourceLabel
-            : "\(providerName) · \(sourceLabel)"
+        // 用闭包生成 Text concat：provider 名 + 弱色 source 后缀，渲染一体但颜色分层
+        // 用短标签 CC/ZC 节省宽度（与浮窗一致）
+        let sourceLabel = UsageSource(rawValue: usage.source)?.shortLabel ?? usage.source
         let providerFull = providerName.isEmpty
             ? usage.model
             : "\(usage.model) · \(providerName)"
@@ -312,13 +311,18 @@ struct ContentView: View {
                     .font(Theme.Typography.body.weight(.medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                // 次行永远显示（即便 provider 为空也有 source 后缀）
-                Text(providerSubText)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+                // 次行：用 Text + Text concat，provider 用 .tertiary，source 后缀更弱显
+                // 让 source 不会喧宾夺主，又能明确区分来源通道。
+                (
+                    Text(providerName.isEmpty ? "" : providerName)
+                    + Text(providerName.isEmpty ? sourceLabel : " · \(sourceLabel)")
+                )
+                .font(Theme.Typography.caption)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .truncationMode(.middle)
             }
-            .frame(width: 108, alignment: .leading)
+            .frame(width: 110, alignment: .leading)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: Theme.Radius.bar, style: .continuous)
