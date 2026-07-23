@@ -18,7 +18,7 @@ WIDGET_APPEX="WidgetSupport.appex"
 APP_BUNDLE_ID="com.luoqi.tokenmonitor"
 WIDGET_BUNDLE_ID="com.luoqi.tokenmonitor.widget"
 TEAM_ID="N5YV5FV235"
-MARKETING_VERSION="0.1.0"
+MARKETING_VERSION="0.2.0"
 
 # 颜色输出
 RED='\033[0;31m'

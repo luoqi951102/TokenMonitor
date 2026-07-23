@@ -17,6 +17,9 @@ final class BookmarkStore {
         case ccusageDB = "bookmark_ccusage_db"
         case zcodeDB = "bookmark_zcode_db"
         case ccUsageExe = "bookmark_cc_usage_exe"
+        // Swift sync 私有化新增：扫描 JSONL 需要 projects 目录授权，读 settings.json 需要 settings 文件授权
+        case claudeProjectsDir = "bookmark_claude_projects_dir"
+        case claudeSettings = "bookmark_claude_settings"
     }
 
     private init() {}
@@ -94,7 +97,10 @@ final class BookmarkStore {
     }
 
     func clearAll() {
-        for key in [Key.ccusageDB, .zcodeDB, .ccUsageExe] {
+        for key in [
+            Key.ccusageDB, .zcodeDB, .ccUsageExe,
+            .claudeProjectsDir, .claudeSettings,
+        ] {
             clear(key)
         }
     }

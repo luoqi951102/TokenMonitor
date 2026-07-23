@@ -160,8 +160,9 @@ final class DashboardViewModel: ObservableObject {
 
     // MARK: - Manual Sync
     //
-    // sandbox=true 下无法 spawn cc-use，manualSync 只重新读 DB + 刷新视图。
-    // 实际数据同步由用户在终端运行 `cc-usage sync` 完成，或通过 launchd 定时跑。
+    // Swift sync 私有化后：syncNow 在三授权齐全时跑 ClaudeSync + ZCodeSync 真同步，
+    // 把 JSONL + ZCode model_usage 增量写进 ccusage.db，不再依赖外部 Python cc-usage。
+    // 未授权则走 fallback（数据由终端 cc-usage sync 或 launchd 产出）。
     //
     // 注意：openDB 会销毁旧 aggregator 并重建 UsageDB/ZCodeUsageDB 实例。
     // 高频路径（5 分钟 timer / 浮窗刷新按钮）请只调 refresh()，不要走 openDB()，
@@ -170,7 +171,8 @@ final class DashboardViewModel: ObservableObject {
 
     func manualSync() async {
         await syncRunner.syncNow()
-        reopenDBIfChanged()  // cc-usage 写完后再决定要不要重建 aggregator（不是每次都重建）
+        // Swift sync 一定会改 ccusage.db，强制 openDB 重建只读句柄（确保读到新数据）
+        openDB()
         refresh()
         pushWidgetSnapshot()
     }
