@@ -1,27 +1,77 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <defs>
-    <!-- 品牌色对角渐变（#4E5BD6 -> #7979FF），跟 W1 后 Theme.brand 一致 -->
+    <!-- 深紫渐变背景：左上深紫 → 右下亮紫，跟 macOS Tahoe 玻璃质感呼应 -->
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#4E5BD6"/>
-      <stop offset="100%" stop-color="#7979FF"/>
+      <stop offset="0%" stop-color="#1a0b2e"/>
+      <stop offset="55%" stop-color="#3a1d6e"/>
+      <stop offset="100%" stop-color="#4E5BD6"/>
     </linearGradient>
+
+    <!-- 左上柔光高光（glassmorphism 玻璃质感）-->
+    <radialGradient id="glow" cx="22%" cy="18%" r="65%">
+      <stop offset="0%" stop-color="#b69dff" stop-opacity="0.55"/>
+      <stop offset="45%" stop-color="#7a5cff" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#7a5cff" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- 三柱填充：顶亮底暗渐变（白 → 淡紫，营造立体感）-->
+    <linearGradient id="bar" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="55%" stop-color="#e8e0ff"/>
+      <stop offset="100%" stop-color="#a890ff"/>
+    </linearGradient>
+
+    <!-- 柱顶发光圆点的发光晕（外层柔光）-->
+    <radialGradient id="dotGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="40%" stop-color="#c4b3ff" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#c4b3ff" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- baseline 渐变（左暗右亮，引导视线流向最高柱）-->
+    <linearGradient id="baseline" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#a890ff" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.7"/>
+    </linearGradient>
+
+    <!-- 模糊滤镜：给柱顶圆点加柔光发光 -->
+    <filter id="softBlur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
   </defs>
 
   <!-- squircle 圆角背景（rx 224 ≈ 22%，匹配 macOS Tahoe 大圆角 squircle） -->
   <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="url(#bg)"/>
+  <!-- 左上高光叠加（玻璃质感） -->
+  <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="url(#glow)"/>
 
-  <!-- 三柱几何中心（整体在画布居中），底部对齐 baseline=640 -->
+  <!-- 三柱几何（整体居中，底部对齐 baseline=660） -->
   <g transform="translate(512 0)">
-    <!-- 三柱 (60 宽, 18 圆角, 高度递增 180 / 260 / 380)：克制版 -->
-    <!-- 左柱: 输入 input（最矮，0.82 透明度） -->
-    <rect x="-205" y="460" width="60" height="180" rx="18" fill="#FFFFFF" opacity="0.82"/>
-    <!-- 中柱: 缓存 cache（中等，0.92 透明度） -->
-    <rect x="-65"  y="380" width="60" height="260" rx="18" fill="#FFFFFF" opacity="0.92"/>
-    <!-- 右柱: 输出 output（最高，1.0 透明度） -->
-    <rect x="75"   y="260" width="60" height="380" rx="18" fill="#FFFFFF" opacity="1"/>
+    <!-- 左柱: 输入 input（最矮，180 高）-->
+    <rect x="-205" y="480" width="60" height="180" rx="18" fill="url(#bar)"/>
+    <!-- 左柱左侧高光边缘（细长亮条，光来自左上方） -->
+    <rect x="-205" y="488" width="8" height="164" rx="4" fill="#ffffff" opacity="0.55"/>
 
-    <!-- 底部 baseline：测量锚点，与菜单栏 icon 三柱+baseline 同语言 -->
-    <rect x="-240" y="640" width="480" height="14" rx="7" fill="#FFFFFF" opacity="0.55"/>
+    <!-- 中柱: 缓存 cache（中等，260 高）-->
+    <rect x="-65"  y="400" width="60" height="260" rx="18" fill="url(#bar)"/>
+    <rect x="-65"  y="408" width="8" height="244" rx="4" fill="#ffffff" opacity="0.55"/>
+
+    <!-- 右柱: 输出 output（最高，380 高，主焦点）-->
+    <rect x="75"   y="280" width="60" height="380" rx="18" fill="url(#bar)"/>
+    <rect x="75"   y="288" width="8" height="364" rx="4" fill="#ffffff" opacity="0.6"/>
+
+    <!-- 柱顶发光晕（柔光，比圆点大 2.5 倍，铺开光晕）-->
+    <circle cx="-175" cy="480" r="34" fill="url(#dotGlow)" filter="url(#softBlur)"/>
+    <circle cx="-35"  cy="400" r="34" fill="url(#dotGlow)" filter="url(#softBlur)"/>
+    <circle cx="105"  cy="280" r="38" fill="url(#dotGlow)" filter="url(#softBlur)"/>
+
+    <!-- 柱顶发光圆点（实心，accent 高光，像"脉冲信号"）-->
+    <circle cx="-175" cy="480" r="13" fill="#ffffff" opacity="0.95"/>
+    <circle cx="-35"  cy="400" r="13" fill="#ffffff" opacity="0.95"/>
+    <circle cx="105"  cy="280" r="15" fill="#ffffff" opacity="1"/>
+
+    <!-- 底部 baseline：测量锚点，左暗右亮渐变引导视线 -->
+    <rect x="-240" y="660" width="480" height="12" rx="6" fill="url(#baseline)"/>
   </g>
 </svg>
