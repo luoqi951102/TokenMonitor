@@ -293,7 +293,8 @@ final class FloatingWidgetWindow {
            let s = Size(rawValue: raw) {
             return s
         }
-        return .medium
+        // 默认档位：大（360×420 完整看板）
+        return .large
     }
 
     private func savedFrame() -> NSRect? {
@@ -367,7 +368,8 @@ private final class WidgetPanel: NSPanel {
 // MARK: - Size Environment Key
 
 private struct FloatingWidgetSizeKey: EnvironmentKey {
-    static let defaultValue: FloatingWidgetWindow.Size = .medium
+    // 默认档位：大（与 currentSize() 保持一致）
+    static let defaultValue: FloatingWidgetWindow.Size = .large
 }
 extension EnvironmentValues {
     var floatingWidgetSize: FloatingWidgetWindow.Size {
