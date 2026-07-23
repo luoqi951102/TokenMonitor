@@ -294,6 +294,12 @@ struct ContentView: View {
     private func modelBar(_ usage: ModelUsage, maxTotal: Int) -> some View {
         let pct = maxTotal > 0 ? Double(usage.totalTokens) / Double(maxTotal) : 0
         let providerName = providerDisplayName(usage.provider, model: usage.model)
+        // 次行：provider 后追加来源后缀（Claude Code / ZCode），避免同 provider 不同 source 歧义
+        // 例：浙算MaaS 同时出现在 Claude Code 和 ZCode，单看 "浙算MaaS" 无法辨认
+        let sourceLabel = UsageSource(rawValue: usage.source)?.displayName ?? usage.source
+        let providerSubText = providerName.isEmpty
+            ? sourceLabel
+            : "\(providerName) · \(sourceLabel)"
         let providerFull = providerName.isEmpty
             ? usage.model
             : "\(usage.model) · \(providerName)"
@@ -306,12 +312,11 @@ struct ContentView: View {
                     .font(Theme.Typography.body.weight(.medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                if !providerName.isEmpty {
-                    Text(providerName)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
+                // 次行永远显示（即便 provider 为空也有 source 后缀）
+                Text(providerSubText)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
             }
             .frame(width: 108, alignment: .leading)
             GeometryReader { geo in

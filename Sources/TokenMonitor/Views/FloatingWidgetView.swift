@@ -253,9 +253,14 @@ private struct CompactContent: View {
             }
             .padding(.horizontal, 10)
 
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
+            // 注：曾用 alignment: .firstTextBaseline + 同 HStack 内 Spacer，
+            // 但 .contentTransition(.numericText) 过渡过程中 Spacer 无 baseline，
+            // 触发 SwiftUI 内部 CollectingViewsWithInvalidBaselines 异常 → 切源时闪退。
+            // 改 .center 既安全又几乎不动视觉。
+            HStack(alignment: .center, spacing: 4) {
                 Text(formatTokens(viewModel.totalTokens))
                     .font(Theme.Typography.metric)
+                    .baselineOffset(2)  // 视觉补偿，让大数字与小字 "tokens" 仍然近似底对齐
                     .monospacedDigit()
                     .foregroundStyle(.primary)
                     .contentTransition(.numericText(value: Double(viewModel.totalTokens)))

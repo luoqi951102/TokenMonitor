@@ -41,6 +41,9 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSUIElement: true
         NSHighResolutionCapable: true
+        # App 图标：用 Assets.xcassets/AppIcon.appiconset 编译出的 AppIcon.icns
+        CFBundleIconFile: AppIcon
+        CFBundleIconName: AppIcon
         CFBundleURLTypes:
           - CFBundleURLName: com.luoqi.tokenmonitor
             CFBundleURLSchemes:
