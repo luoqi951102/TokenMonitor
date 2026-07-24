@@ -22,14 +22,14 @@ final class FloatingWidgetWindow {
 
     enum Size: String, CaseIterable {
         case compact      // 200×100
-        case medium       // 320×260（扩容，能容纳 streak + Top 模型 + 项目）
-        case large        // 360×420（完整看板）
+        case medium       // 320×290（含 streak + Top 模型 + 项目）
+        case large        // 360×484（LargeContent 自然高度）
 
         var NSSize: AppKit.NSSize {
             switch self {
             case .compact: return .init(width: 200, height: 100)
-            case .medium:  return .init(width: 320, height: 260)
-            case .large:   return .init(width: 360, height: 420)
+            case .medium:  return .init(width: 320, height: 290)
+            case .large:   return .init(width: 360, height: 484)
             }
         }
 
@@ -56,6 +56,16 @@ final class FloatingWidgetWindow {
         Self.log("show: window=\(window != nil ? "ok" : "nil") isVisible=\(window?.isVisible ?? false)")
         window?.makeKeyAndOrderFront(nil)
         window?.orderFrontRegardless()
+        // 关键：NSPanel/sandbox 下 createWindow 时 setFrame 可能被 silently 忽略
+        // 直到 panel 真正进入 screen。orderFrontRegardless 后强制再设定一次 size
+        // + origin（保持顶对齐），避免 panel size=(0,0) 此时显示尺寸完全不对。
+        if let win = window {
+            let s = currentSize().NSSize
+            var fr = win.frame
+            fr.origin.y = fr.maxY - s.height  // 保持顶部对齐
+            fr.size = s
+            win.setFrame(fr, display: true)
+        }
         setVisible(true)
     }
 
@@ -104,18 +114,25 @@ final class FloatingWidgetWindow {
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
 
-        // 恢复位置
+        // 恢复位置 + 显式锁定 size（NSPanel 构造后 contentRect 可能被 hosting 的
+        // 初始 EmptyView 重置成 (0,0)，必须显式 setFrame 锁定 size.NSSize）
         if let frame = savedFrame() {
-            panel.setFrame(frame, display: true)
+            // savedFrame 保存的 size 与当前 currentSize 不一定一致（用户从大档切到中档
+            // 后保存），但 size 字段保留旧值 → 覆盖为当前 size.NSSize 强制锁定
+            var f = frame
+            f.size = size.NSSize
+            panel.setFrame(f, display: true)
         } else {
             // 默认屏幕右上角（避开菜单栏和 spotlight）
-            panel.center()
             if let screenFrame = NSScreen.main?.visibleFrame {
                 let origin = NSPoint(
                     x: screenFrame.maxX - size.NSSize.width - 24,
                     y: screenFrame.maxY - size.NSSize.height - 16
                 )
-                panel.setFrameOrigin(origin)
+                panel.setFrame(NSRect(origin: origin, size: size.NSSize), display: true)
+            } else {
+                panel.setFrame(NSRect(origin: .zero, size: size.NSSize), display: true)
+                panel.center()
             }
         }
 
@@ -149,6 +166,11 @@ final class FloatingWidgetWindow {
             }
             return event
         }
+
+        // 最终强制定：NSPanel 在 createWindow 阶段（panel 未上屏）对 setFrame 的 size
+        // 被 silently 忽略，必须在 panel 真正 orderFront 后才能锁住 size。这里先留一次
+        // setTime（即便被忽略也兜底），真正生效在 show() 末尾的 post-setFrame。
+        panel.setFrame(NSRect(origin: panel.frame.origin, size: size.NSSize), display: true)
 
         window = panel
         renderContent()

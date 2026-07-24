@@ -481,6 +481,9 @@ struct ContentView: View {
 
     private func barHeight(_ v: Int, max m: Int) -> CGFloat {
         guard m > 0 else { return 4 }
-        return max(4, CGFloat(v) / CGFloat(m) * 60)
+        // 防御除 0 / 负数 → NaN/Infinity（SwiftUI frame(height: nan) 会触发
+        // CollectingViewsWithInvalidBaselines 异常导致切源时崩溃）
+        let ratio = max(0, min(Double(v) / Double(m), 1.0))
+        return max(4, CGFloat(ratio) * 60)
     }
 }

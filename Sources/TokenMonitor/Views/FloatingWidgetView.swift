@@ -681,21 +681,28 @@ private struct LargeContent: View {
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
-            HStack(alignment: .bottom, spacing: 2) {
+            // 注：曾用 HStack(alignment: .bottom) 让柱子底部对齐，但 .bottom 对齐
+            // 在纯图形子项（RoundedRectangle，无 baseline anchor）上 macOS 14 会
+            // 触发 CollectingViewsWithInvalidBaselines ObjC 异常 → SwiftUI 切源重建时崩。
+            // 改 HStack 默认 .center 对齐 + 每根柱用 frame(maxHeight:.infinity, alignment:.bottom)
+            // 既达到底部对齐效果又不依赖 baseline。
+            HStack(spacing: 2) {
                 ForEach(data) { d in
                     RoundedRectangle(cornerRadius: 1.5)
                         .fill(Theme.chartBar)
                         .frame(maxWidth: .infinity)
-                        .frame(height: barHeight(d.tokens, max: maxTokens))
+                        .frame(height: barHeight(d.tokens, max: maxTokens), alignment: .bottom)
                 }
             }
-            .frame(height: 30)
+            .frame(height: 30, alignment: .bottom)
         }
     }
 
     private func barHeight(_ v: Int, max m: Int) -> CGFloat {
         guard m > 0 else { return 2 }
-        return max(2, CGFloat(v) / CGFloat(m) * 26)
+        // 防御除 0 / 负数 → NaN（anya_frame(height: nan) 触发 baseline 异常崩溃）
+        let ratio = max(0, min(Double(v) / Double(m), 1.0))
+        return max(2, CGFloat(ratio) * 26)
     }
 }
 
