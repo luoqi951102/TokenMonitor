@@ -84,11 +84,16 @@ enum ZCodeSync {
         }
 
         // 1. 打开 ZCode 库（两级降级，复用 ZCodeUsageDB 模式）
-        //    用 SQLITE_OPEN_READONLY | SQLITE_OPEN_URI，不碰 -wal/-shm
+        // 1. 打开 ZCode 库（mode=ro 优先）
+        //    注：原用 immutable=1 优先，但 immutable=1 假设文件永不变更，
+        //    会忽略 ZCode 服务在 -wal 里新写入的行 → App 长寿命进程
+        //    启动后永远只看到启动瞬间的 zcode 库状态，新行一行都同步不进来。
+        //    mode=ro 是 read-only 但读 WAL，能读到其他进程最新写入。
+        //    immutable=1 保留为备选，当 mode=ro 因 WAL 锁打不开时 fallback。
         var srcHandle: OpaquePointer?
         let candidates = [
-            "file:\(url.path)?immutable=1",
             "file:\(url.path)?mode=ro",
+            "file:\(url.path)?immutable=1",
         ]
         var opened = false
         for uri in candidates {
