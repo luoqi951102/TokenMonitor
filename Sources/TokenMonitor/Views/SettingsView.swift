@@ -78,6 +78,7 @@ struct SettingsView: View {
                         .font(.caption.weight(.medium))
                     Spacer()
                     Picker("", selection: $viewModel.syncRunner.intervalMinutes) {
+                        Text("1 分钟").tag(1)
                         Text("5 分钟").tag(5)
                         Text("10 分钟").tag(10)
                         Text("30 分钟").tag(30)

@@ -35,8 +35,8 @@ final class SyncRunner: ObservableObject {
         }
     }
 
-    /// 自动刷新间隔（分钟）
-    @Published var intervalMinutes: Int = UserDefaults.standard.object(forKey: "sync_interval_minutes") as? Int ?? 5 {
+    /// 自动刷新间隔（分钟）。默认 1 分钟 — 为了让浮窗/面板的实时性接近在线监控
+    @Published var intervalMinutes: Int = UserDefaults.standard.object(forKey: "sync_interval_minutes") as? Int ?? 1 {
         didSet {
             UserDefaults.standard.set(intervalMinutes, forKey: "sync_interval_minutes")
             restartTimer()

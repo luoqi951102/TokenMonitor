@@ -208,6 +208,16 @@ private struct RefreshIconButton: View {
                         .fill(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.06))
                         .frame(width: hitSize, height: hitSize)
                 }
+                // 1 分钟自动刷新倒计时环：每秒重绘，progress = 当前秒/interval 秒
+                // 走到末尾自然回到 0（下一轮 sync 触发的瞬间），起到"还有多久会自动刷新"
+                // 的可视提示。SwiftUI 在 macOS 14+ 上 TimelineView(.periodic) 性能 OK。
+                if let interval = viewModel.syncRunner.intervalMinutes as Int?, interval > 0 {
+                    RefreshCountdownRing(
+                        intervalSeconds: TimeInterval(interval * 60),
+                        ringSize: hitSize,
+                        ringColor: Theme.brand.opacity(0.5)
+                    )
+                }
                 // 图标本体：semibold → medium，更克制
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: size, weight: .medium))
@@ -229,6 +239,40 @@ private struct RefreshIconButton: View {
         .help(rotating ? "同步中..." : "重新读取数据库并刷新")
         .accessibilityLabel("刷新")
         .animation(.easeInOut(duration: 0.15), value: hovering)
+    }
+}
+
+// MARK: - 每分钟自动刷新倒计时环
+//
+// SwiftUI TimelineView 每秒驱动一次重建。progress = 当前时刻在 sync 周期内的相位
+// （0 → 1），到 1 后自然回到 0（下一个周期开始 = Swift sync timer 触发的瞬间），
+// 让用户从视觉上感知"还有多久会自动刷新一次"。
+// 这是当前选用的"每分钟刷新一次"页面特效。
+private struct RefreshCountdownRing: View {
+    let intervalSeconds: TimeInterval
+    let ringSize: CGFloat
+    let ringColor: Color
+
+    var body: some View {
+        // .periodic 每秒触发一次重建，开销可忽略
+        TimelineView(.periodic(from: Date(), by: 1)) { context in
+            let phase = intervalSeconds > 0
+                ? context.date.timeIntervalSince1970.truncatingRemainder(dividingBy: intervalSeconds) / intervalSeconds
+                : 0
+            // 环的描线粗细：1.2pt，跟主面板 trendSparkline 同细线语言
+            ZStack {
+                // 背景暗轨
+                Circle()
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 1.2)
+                    .frame(width: ringSize - 2, height: ringSize - 2)
+                // 进度弧（从 12 点钟方向顺时针走）
+                Circle()
+                    .trim(from: 0, to: max(0.001, phase))
+                    .stroke(ringColor, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: ringSize - 2, height: ringSize - 2)
+            }
+        }
     }
 }
 
