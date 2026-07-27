@@ -63,6 +63,17 @@ final class Aggregator {
                 end: fmt(sunday, with: "yyyy-MM-dd"),
                 label: "本周 \(fmt(monday, with: "MM-dd")) ~ \(fmt(sunday, with: "MM-dd"))"
             )
+        case .lastWeek:
+            // 上周 = 本周一往前推 7 天到上周日，与 .week 同算法 (Mon=0..Sun=6), 整体 -7 天
+            let pyWeekday = ((comps.weekday ?? 1) + 5) % 7
+            let thisMonday = cal.date(byAdding: .day, value: -pyWeekday, to: today)!
+            let lastMonday = cal.date(byAdding: .day, value: -7, to: thisMonday)!
+            let lastSunday = cal.date(byAdding: .day, value: 6, to: lastMonday)!
+            return DateRange(
+                start: fmt(lastMonday, with: "yyyy-MM-dd"),
+                end: fmt(lastSunday, with: "yyyy-MM-dd"),
+                label: "上周 \(fmt(lastMonday, with: "MM-dd")) ~ \(fmt(lastSunday, with: "MM-dd"))"
+            )
         case .month:
             let first = cal.date(from: DateComponents(year: comps.year, month: comps.month, day: 1))!
             let nextMonth: Date = {

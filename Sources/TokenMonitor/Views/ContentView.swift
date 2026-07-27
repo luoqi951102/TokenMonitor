@@ -362,7 +362,7 @@ struct ContentView: View {
         let displayData: [DailyTotal] = {
             let cap: Int
             switch viewModel.range {
-            case .today, .week: cap = 14
+            case .today, .week, .lastWeek: cap = 14
             case .month: cap = 31
             case .all: cap = 30
             }

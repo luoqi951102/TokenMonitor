@@ -31,15 +31,17 @@ enum UsageSource: String, Codable, CaseIterable {
 enum UsageRange: String, Codable, CaseIterable {
     case today
     case week
+    case lastWeek
     case month
     case all
 
     var displayName: String {
         switch self {
-        case .today: return "今日"
-        case .week:  return "本周"
-        case .month: return "本月"
-        case .all:   return "全部"
+        case .today:    return "今日"
+        case .week:     return "本周"
+        case .lastWeek: return "上周"
+        case .month:    return "本月"
+        case .all:      return "全部"
         }
     }
 }
