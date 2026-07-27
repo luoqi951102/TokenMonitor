@@ -190,6 +190,8 @@ private struct RefreshIconButton: View {
 
     @State private var rotating: Bool = false
     @State private var hovering: Bool = false
+    @State private var pressing: Bool = false      // 按下时缩放反馈
+    @State private var successFlash: Bool = false  // sync 成功后图标短暂高亮
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -199,6 +201,10 @@ private struct RefreshIconButton: View {
             Task { @MainActor in
                 await viewModel.manualSync()
                 rotating = false
+                // 成功完成 → 触发 0.7s 高亮闪一下，让用户明确感知"我刚刷过了"
+                successFlash = true
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                successFlash = false
             }
         } label: {
             ZStack {
@@ -208,20 +214,23 @@ private struct RefreshIconButton: View {
                         .fill(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.06))
                         .frame(width: hitSize, height: hitSize)
                 }
-                // 1 分钟自动刷新倒计时环：每秒重绘，progress = 当前秒/interval 秒
-                // 走到末尾自然回到 0（下一轮 sync 触发的瞬间），起到"还有多久会自动刷新"
-                // 的可视提示。SwiftUI 在 macOS 14+ 上 TimelineView(.periodic) 性能 OK。
+                // 1 分钟自动刷新倒计时环：基于上次真实 syncAt 推剩余秒数
+                // （不是 epoch 取余；这样环归零的瞬间正好对齐下一次 timer 触发）。
+                // pms = (now - lastSyncAt) / interval，截断 [0,1]。
                 if let interval = viewModel.syncRunner.intervalMinutes as Int?, interval > 0 {
                     RefreshCountdownRing(
                         intervalSeconds: TimeInterval(interval * 60),
+                        lastSyncAt: viewModel.syncRunner.lastSyncAt ?? Date(),
                         ringSize: hitSize,
-                        ringColor: Theme.brand.opacity(0.5)
+                        ringColor: successFlash
+                            ? Theme.brand
+                            : Theme.brand.opacity(0.5)
                     )
                 }
-                // 图标本体：semibold → medium，更克制
+                // 图标本体：medium 更克制；sync 成功后跳到 Theme.brand 0.7s 高亮
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: size, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(successFlash ? Theme.brand : Color.secondary)
                     .rotationEffect(.degrees(rotating ? 360 : 0))
                     .animation(
                         rotating
@@ -231,35 +240,47 @@ private struct RefreshIconButton: View {
                     )
                     .frame(width: size, height: size)
             }
+            .scaleEffect(pressing ? 0.85 : 1.0)
             .frame(width: hitSize, height: hitSize)
             .contentShape(Rectangle())
             .onHover { hovering = $0 }
         }
         .buttonStyle(.plain)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in pressing = true }
+                .onEnded { _ in pressing = false }
+        )
         .help(rotating ? "同步中..." : "重新读取数据库并刷新")
         .accessibilityLabel("刷新")
         .animation(.easeInOut(duration: 0.15), value: hovering)
+        .animation(.spring(response: 0.25, dampingFraction: 0.65), value: pressing)
+        .animation(.easeOut(duration: successFlash ? 0.25 : 0.4), value: successFlash)
     }
 }
 
 // MARK: - 每分钟自动刷新倒计时环
 //
-// SwiftUI TimelineView 每秒驱动一次重建。progress = 当前时刻在 sync 周期内的相位
-// （0 → 1），到 1 后自然回到 0（下一个周期开始 = Swift sync timer 触发的瞬间），
-// 让用户从视觉上感知"还有多久会自动刷新一次"。
-// 这是当前选用的"每分钟刷新一次"页面特效。
+// 基于"上次 sync 完成时刻"推剩余时间，跟 SyncRunner 真实 timer 对齐。
+// phase = (now - lastSyncAt) / intervalSeconds，截断 [0, 1]：
+//   - sync 刚完成的瞬间 → phase ≈ 0，环几乎空白
+//   - 距下次 sync 临近  → phase ≈ 1，环几乎走满
+//   - timer 触发并完成下一个 sync → lastSyncAt 更新，环自然归零
+// 这跟之前用 epoch 取余完全不同：epoch 取余跟 timer 触发时机无关，
+// 环走完一圈不一定真触发 sync，sync 也不一定发生在环归零的瞬间。
 private struct RefreshCountdownRing: View {
     let intervalSeconds: TimeInterval
+    let lastSyncAt: Date
     let ringSize: CGFloat
     let ringColor: Color
 
     var body: some View {
         // .periodic 每秒触发一次重建，开销可忽略
         TimelineView(.periodic(from: Date(), by: 1)) { context in
+            let elapsed = context.date.timeIntervalSince(lastSyncAt)
             let phase = intervalSeconds > 0
-                ? context.date.timeIntervalSince1970.truncatingRemainder(dividingBy: intervalSeconds) / intervalSeconds
+                ? max(0, min(elapsed / intervalSeconds, 1.0))
                 : 0
-            // 环的描线粗细：1.2pt，跟主面板 trendSparkline 同细线语言
             ZStack {
                 // 背景暗轨
                 Circle()
@@ -311,6 +332,9 @@ private struct CompactContent: View {
                     .animation(.easeOut(duration: 0.3), value: viewModel.totalTokens)
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
+                    // 每次刷新后大数字短暂放大一下（sync 成功 → 数字"跳出来"）
+                    .scaleEffect(viewModel.refreshPulse ? 1.06 : 1.0)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.55), value: viewModel.refreshPulse)
                 Text("tokens")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(.secondary)
@@ -425,6 +449,9 @@ private struct MediumContent: View {
                         .animation(.easeOut(duration: 0.3), value: viewModel.totalTokens)
                         .minimumScaleFactor(0.6)
                         .lineLimit(1)
+                        // 刷新后大数字短暂放大 spring 一下，给"数据刷新了"留视觉印记
+                        .scaleEffect(viewModel.refreshPulse ? 1.06 : 1.0)
+                        .animation(.spring(response: 0.35, dampingFraction: 0.55), value: viewModel.refreshPulse)
                     Text("总 Token")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(.secondary)
@@ -569,6 +596,9 @@ private struct LargeContent: View {
                         .animation(.easeOut(duration: 0.3), value: viewModel.totalTokens)
                         .minimumScaleFactor(0.5)
                         .lineLimit(1)
+                        // 刷新后大数字短暂放大 spring 一下
+                        .scaleEffect(viewModel.refreshPulse ? 1.06 : 1.0)
+                        .animation(.spring(response: 0.35, dampingFraction: 0.55), value: viewModel.refreshPulse)
                     Text("总 Token")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(.secondary)

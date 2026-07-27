@@ -248,6 +248,9 @@ struct ContentView: View {
                 .animation(.easeOut(duration: 0.3), value: tokens)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                // 刷新后大数字短暂放大 spring 一下，跟浮窗同款 refreshPulse 信号
+                .scaleEffect(viewModel.refreshPulse ? 1.06 : 1.0)
+                .animation(.spring(response: 0.35, dampingFraction: 0.55), value: viewModel.refreshPulse)
             Text(label)
                 .font(Theme.Typography.caption)
                 .foregroundStyle(.secondary)

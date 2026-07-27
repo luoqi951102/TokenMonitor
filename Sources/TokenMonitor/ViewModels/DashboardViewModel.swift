@@ -39,6 +39,16 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var lastUpdated: Date?
     @Published private(set) var dataSpan: (start: String?, end: String?) = (nil, nil)
 
+    /// 最近一次"数据真的刷新了"的时刻。manualSync / 自动 timer / 切换 range/source
+    /// 都会更新它。UI 监听这个值触发数字 pulse / 按钮高亮等"我刚刷过了"的视觉特效。
+    @Published var lastRefreshAt: Date = Date()
+
+    /// 数字 pulse 开关。refresh() 完成后置 true，0.45s 后回 false。
+    /// UI 用它驱动大数字短暂放大 spring动画，给"数据刷新了"留视觉印记。
+    /// 不能用纯 @State 在视图内做：视图重建会丢状态；放 viewModel 保证跨视图一致。
+    @Published private(set) var refreshPulse: Bool = false
+    private var pulseWork: Task<Void, Never>?
+
     // SyncRunner 自动 timer 触发 syncNow 后会发 .tokenMonitorDidSync 通知，
     // 这里存 observer token 用于 shutdown 时 remove。这样 UI 才能每分钟自动看到
     // 新写入 DB 的数据（不然 SyncRunner 写库成功 UI 仍显示老快照）。
@@ -110,8 +120,15 @@ final class DashboardViewModel: ObservableObject {
     func bootstrap() {
         openDB()
         syncRunner.startTimer()
-        // 监听自动 timer 触发的 sync，sync 完成后做 refresh + reopenDBIfChanged +
+        // 监听自动 timer 触发的 sync，sync 完成后做强制 openDB + refresh +
         // pushWidgetSnapshot 把新写入 DB 的数据刷到 UI；这是 1 分钟同步能"看到刷新"的关键。
+        //
+        // 注意：这里**强制 openDB()** 而不是 reopenDBIfChanged()。因为：
+        // 1. sync 一定写了数据到 ccusage.db（ClaudeSync + ZCodeSync + checkpoint）
+        // 2. checkpoint 是 PASSIVE，不保证把 WAL 全部落回主库 → mtime 可能不变
+        // 3. mtime 不变 → reopenDBIfChanged 不会重建 aggregator → UI 看不到新数据
+        // 这正是之前"1 分钟刷新没做到位"的根本原因：timer 跑了但 aggregator 没换。
+        // 强制 openDB() 重建只读 UsageDB 句柄（mode=ro 能读 WAL），aggregator 就拿到新数据了。
         syncObserver = NotificationCenter.default.addObserver(
             forName: .tokenMonitorDidSync,
             object: nil,
@@ -119,16 +136,18 @@ final class DashboardViewModel: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                self.reopenDBIfChanged()  // ccusage.db 若被新建/改写重建 aggregator
+                self.openDB()              // 强制重建只读句柄（mode=ro 读 WAL）
                 self.refresh()
                 self.pushWidgetSnapshot()
+                self.lastRefreshAt = Date()  // 触发 UI pulse 特效
             }
         }
         Task {
             await syncRunner.syncNow()
-            reopenDBIfChanged()  // sync 完成后看 DB 有没有被新建/改写
+            openDB()
             refresh()
             pushWidgetSnapshot()
+            lastRefreshAt = Date()
         }
         refresh()  // 立即用现有缓存数据展示
     }
@@ -139,6 +158,8 @@ final class DashboardViewModel: ObservableObject {
             NotificationCenter.default.removeObserver(syncObserver)
             self.syncObserver = nil
         }
+        pulseWork?.cancel()
+        pulseWork = nil
     }
 
     // MARK: - Refresh
@@ -178,7 +199,21 @@ final class DashboardViewModel: ObservableObject {
         wow = aggregator.weekOverWeek(sourceFilter: src)
         dataSpan = aggregator.dataSpan()
         lastUpdated = Date()
+        lastRefreshAt = Date()  // 触发 UI pulse / 数字滚动特效
         isLoading = false
+        triggerPulse()
+    }
+
+    /// 启动 0.45s pulse 动画：refreshPulse 短暂置 true 再回 false。
+    /// 上一次没结束的 pulse 会被取消（连续刷新不卡顿）。
+    private func triggerPulse() {
+        pulseWork?.cancel()
+        refreshPulse = true
+        pulseWork = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            guard !Task.isCancelled else { return }
+            self?.refreshPulse = false
+        }
     }
 
     // MARK: - Manual Sync
@@ -195,9 +230,13 @@ final class DashboardViewModel: ObservableObject {
     func manualSync() async {
         await syncRunner.syncNow()
         // Swift sync 一定会改 ccusage.db，强制 openDB 重建只读句柄（确保读到新数据）
+        // ccusage.db 主库 mtime 不一定变（PASSIVE checkpoint 不保证全部落回主库），
+        // 所以这里不能用 reopenDBIfChanged()，必须强制 openDB()，否则 aggregator
+        // 复用老的 UsageDB 句柄（持有 WAL 旧 snapshot），看不到刚写入的新数据。
         openDB()
         refresh()
         pushWidgetSnapshot()
+        lastRefreshAt = Date()
     }
 
     // MARK: - Computed
