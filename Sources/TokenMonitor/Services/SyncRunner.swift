@@ -195,9 +195,20 @@ final class SyncRunner: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 await self?.syncNow()
+                // timer 触发的 sync 走自动模式 — sync 成功后通知 viewModel refresh
+                // 把新写入 DB 的数据投射到 UI（bootstrap/manualSync 不需要走这条，
+                // 它们末尾自己调过 refresh；只有 timer 这里需要发通知）。
+                NotificationCenter.default.post(name: .tokenMonitorDidSync, object: nil)
             }
         }
     }
+}
+
+extension Notification.Name {
+    /// SyncRunner 自动 timer 触发 syncNow 后发出，让 DashboardViewModel
+    /// 跑 refresh() + reopenDBIfChanged() + pushWidgetSnapshot() 把新写入
+    /// ccusage.db 的数据刷新到主面板 + 浮窗 UI。
+    static let tokenMonitorDidSync = Notification.Name("TokenMonitorDidSync")
 }
 
 // MARK: - Sync Report / Error

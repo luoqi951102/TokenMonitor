@@ -39,6 +39,11 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var lastUpdated: Date?
     @Published private(set) var dataSpan: (start: String?, end: String?) = (nil, nil)
 
+    // SyncRunner 自动 timer 触发 syncNow 后会发 .tokenMonitorDidSync 通知，
+    // 这里存 observer token 用于 shutdown 时 remove。这样 UI 才能每分钟自动看到
+    // 新写入 DB 的数据（不然 SyncRunner 写库成功 UI 仍显示老快照）。
+    private var syncObserver: NSObjectProtocol?
+
     // MARK: - Errors
 
     @Published private(set) var errorMessage: String?
@@ -105,6 +110,20 @@ final class DashboardViewModel: ObservableObject {
     func bootstrap() {
         openDB()
         syncRunner.startTimer()
+        // 监听自动 timer 触发的 sync，sync 完成后做 refresh + reopenDBIfChanged +
+        // pushWidgetSnapshot 把新写入 DB 的数据刷到 UI；这是 1 分钟同步能"看到刷新"的关键。
+        syncObserver = NotificationCenter.default.addObserver(
+            forName: .tokenMonitorDidSync,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.reopenDBIfChanged()  // ccusage.db 若被新建/改写重建 aggregator
+                self.refresh()
+                self.pushWidgetSnapshot()
+            }
+        }
         Task {
             await syncRunner.syncNow()
             reopenDBIfChanged()  // sync 完成后看 DB 有没有被新建/改写
@@ -116,6 +135,10 @@ final class DashboardViewModel: ObservableObject {
 
     func shutdown() {
         syncRunner.stopTimer()
+        if let syncObserver {
+            NotificationCenter.default.removeObserver(syncObserver)
+            self.syncObserver = nil
+        }
     }
 
     // MARK: - Refresh
