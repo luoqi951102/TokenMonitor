@@ -41,10 +41,15 @@ final class UsageDB {
             return nil
         }
 
-        // 两级降级：immutable=1 失败则 mode=ro，避免锁住正在写入的进程
+        // 关键：读 ccusage.db 必须读 -wal 副文件（Swift SyncRunner / Python cc-usage
+        // 写的新数据都在 WAL 里，主库文件还是老快照）。
+        //   - mode=ro   : 只读 + 读 WAL，能看到其他进程的写入 ✅
+        //   - immutable=1: SQLite 假定文件永不变，**直接忽略 -wal**，只看主库快照 ❌
+        // 之前 candidates 把 immutable=1 排在前面，导致 UI 永远显示老快照（10.24M 卡死
+        // 而 DB 实际有 9097万 就是这个原因）。已彻底移除 immutable=1 候选。
         let candidates = [
-            "file:\(resolvedPath)?immutable=1",
             "file:\(resolvedPath)?mode=ro",
+            "file:\(resolvedPath)",
         ]
         for url in candidates {
             var db: OpaquePointer?

@@ -144,7 +144,7 @@ final class SyncRunner: ObservableObject {
         guard let db = CCUsageDB(path: UsageDBPath.ccusageDefault) else {
             throw SyncError.dbOpenFailed(UsageDBPath.ccusageDefault)
         }
-        defer { _ = db }  // db 出作用域自动 deinit（关闭句柄 + release bookmark）
+        // db 在 return 后出作用域自动 deinit（关句柄 + release bookmark + 最后一次 checkpoint）
 
         // 3. Claude JSONL 同步
         var report = SyncReport()
@@ -152,6 +152,13 @@ final class SyncRunner: ObservableObject {
 
         // 4. ZCode model_usage 增量同步
         report.zcode = ZCodeSync.sync(db: db, zcodeDB: zcodeURL)
+
+        // 5. 主动 checkpoint，把 WAL 里的新页落回主库 —— 关键修复：
+        //    UsageDB 用 mode=ro 虽然能读 WAL，但 ccusage.db 主库 mtime 不变化，
+        //    reopenDBIfChanged() 就感知不到（WAL 写不更新主库 mtime）。
+        //    PASSIVE checkpoint 把 WAL 合并回主库后，主库 mtime 才会推进，
+        //    下次 reopenDBIfChanged 才会重建 aggregator 拿到新数据。
+        db.checkpointWAL()
 
         return report
     }

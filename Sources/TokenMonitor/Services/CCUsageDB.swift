@@ -61,8 +61,22 @@ final class CCUsageDB {
     }
 
     deinit {
-        if let handle { sqlite3_close(handle) }
+        if let handle {
+            // 关连接前跑一次 PASSIVE checkpoint，把 WAL 里没合并的页尽量落回主库，
+            // 让只读 reader（UsageDB mode=ro 或 reopenDBIfChanged mtime 检查）下次打开
+            // 就能看到新数据。PASSIVE 不会阻塞并发 reader，安全。
+            sqlite3_exec(handle, "PRAGMA wal_checkpoint(PASSIVE)", nil, nil, nil)
+            sqlite3_close(handle)
+        }
         if let url = securityScopedURL { BookmarkStore.shared.release(url) }
+    }
+
+    /// 显式触发 WAL checkpoint。SyncRunner 每轮 sync 完后调用，确保新 token 落主库。
+    /// 用 PASSIVE：不强制等 reader 退出，不锁库；落多少算多少，下次读者能看到的就更多。
+    @discardableResult
+    func checkpointWAL() -> Bool {
+        guard let handle else { return false }
+        return sqlite3_exec(handle, "PRAGMA wal_checkpoint(PASSIVE)", nil, nil, nil) == SQLITE_OK
     }
 
     // MARK: - Write primitives
