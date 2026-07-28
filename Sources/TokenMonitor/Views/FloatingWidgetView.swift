@@ -192,12 +192,17 @@ private struct RefreshIconButton: View {
     @State private var hovering: Bool = false
     @State private var pressing: Bool = false      // 按下时缩放反馈
     @State private var successFlash: Bool = false  // sync 成功后图标短暂高亮
+    @State private var countdownDigit: Int? = nil  // 最后 3 秒倒计时数字 3/2/1，nil 表示未进入
+    @State private var digitTick: Int = 0          // 数字切换 tick（驱动 spring scale 动画）
+    @State private var urgent: Bool = false        // 最后 3 秒整体紧迫态（环加粗+脉动）
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Button {
             // 立即开启旋转动画，避免 syncNow 内部 300ms sleep 让用户感觉无响应
             rotating = true
+            countdownDigit = nil  // 手动触发时取消 3-2-1 数字，回到旋转图标
+            urgent = false
             Task { @MainActor in
                 await viewModel.manualSync()
                 rotating = false
@@ -216,7 +221,8 @@ private struct RefreshIconButton: View {
                 }
                 // 1 分钟自动刷新倒计时环：基于上次真实 syncAt 推剩余秒数
                 // （不是 epoch 取余；这样环归零的瞬间正好对齐下一次 timer 触发）。
-                // pms = (now - lastSyncAt) / interval，截断 [0,1]。
+                // last 3 秒会触发 urgent 态让 CountdownRing 自己加粗并脉动，
+                // 同时 icon 位置切换成 3-2-1 数字 spring 跳动。
                 if let interval = viewModel.syncRunner.intervalMinutes as Int?, interval > 0 {
                     RefreshCountdownRing(
                         intervalSeconds: TimeInterval(interval * 60),
@@ -224,23 +230,54 @@ private struct RefreshIconButton: View {
                         ringSize: hitSize,
                         ringColor: successFlash
                             ? Theme.brand
-                            : Theme.brand.opacity(0.5)
+                            : (urgent ? Theme.brand : Theme.brand.opacity(0.5)),
+                        lineWidth: urgent ? 1.8 : 1.2,
+                        urgent: urgent,
+                        onLast3Seconds: { secs in
+                            // 进入最后 3 秒；secs = 3/2/1（向下取整的剩余秒）
+                            // 每秒只触发一次（secs 变了才更新），驱动数字 spring 动画
+                            if countdownDigit != secs {
+                                countdownDigit = secs
+                                digitTick &+= 1
+                                urgent = true
+                            }
+                        },
+                        onReset: {
+                            // lastSyncAt 跳过了 60s（下一轮 sync 已触发），退出 urgent
+                            if countdownDigit != nil || urgent {
+                                countdownDigit = nil
+                                urgent = false
+                            }
+                        }
                     )
                 }
-                // 图标本体：medium 更克制；sync 成功后跳到 Theme.brand 0.7s 高亮
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: size, weight: .medium))
-                    .foregroundStyle(successFlash ? Theme.brand : Color.secondary)
-                    .rotationEffect(.degrees(rotating ? 360 : 0))
-                    .animation(
-                        rotating
-                            ? .linear(duration: 0.9).repeatForever(autoreverses: false)
-                            : .easeOut(duration: 0.2),
-                        value: rotating
+                // 图标 / 倒计时数字 位置互相切换：
+                //   常规态 → arrow.clockwise icon
+                //   最后 3 秒 → 3/2/1 大数字 spring scale 跳入
+                //   sync 中 / 手动按下 → 仍是 icon 旋转
+                if let d = countdownDigit, !rotating {
+                    CountdownDigitView(
+                        digit: d,
+                        tick: digitTick,
+                        color: Theme.brand
                     )
-                    .frame(width: size, height: size)
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: size, weight: .medium))
+                        .foregroundStyle(successFlash ? Theme.brand : Color.secondary)
+                        .rotationEffect(.degrees(rotating ? 360 : 0))
+                        .animation(
+                            rotating
+                                ? .linear(duration: 0.9).repeatForever(autoreverses: false)
+                                : .easeOut(duration: 0.2),
+                            value: rotating
+                        )
+                        .frame(width: size, height: size)
+                }
             }
             .scaleEffect(pressing ? 0.85 : 1.0)
+            // urgency pulse：最后 3 秒整按钮 1.0 → 1.08 spring 跳一下，每秒一次
+            .scaleEffect(urgent ? 1.0 + 0.04 * sin(Double(digitTick) * .pi / 2) : 1.0)
             .frame(width: hitSize, height: hitSize)
             .contentShape(Rectangle())
             .onHover { hovering = $0 }
@@ -256,6 +293,45 @@ private struct RefreshIconButton: View {
         .animation(.easeInOut(duration: 0.15), value: hovering)
         .animation(.spring(response: 0.25, dampingFraction: 0.65), value: pressing)
         .animation(.easeOut(duration: successFlash ? 0.25 : 0.4), value: successFlash)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: urgent)
+        .animation(.spring(response: 0.35, dampingFraction: 0.55), value: countdownDigit)
+    }
+}
+
+// MARK: - 最后 3 秒倒计时数字视图
+//
+// 每秒进入一个新的 digit（3→2→1），spring scale 从 1.4 → 1.0 + opacity 1 → 0.3
+// 衰减，配合 radial glow 给"火箭发射倒计时"既视感。
+private struct CountdownDigitView: View {
+    let digit: Int
+    let tick: Int  // 每秒切换时 +1，用于驱动 spring 动画
+    let color: Color
+
+    var body: some View {
+        // tick 作为 id 让 SwiftUI 在数字切换时重建 view 触发 .transition spring
+        let _ = tick
+        ZStack {
+            // 发光辐射：径向渐变从中心 brand 色淡出到透明，给"数字身后光晕"既视感
+            Circle()
+                .fill(
+                    RadialGradient(
+                        gradient: Gradient(
+                            colors: [color.opacity(0.45), color.opacity(0.0)]
+                        ),
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 10
+                    )
+                )
+                .frame(width: 16, height: 16)
+                .blur(radius: 1.5)
+            // 数字本身：bold + brand 色，spring scale 跳进来
+            Text("\(digit)")
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(color)
+                .transition(.scale(scale: 1.5).combined(with: .opacity))
+        }
     }
 }
 
@@ -268,32 +344,75 @@ private struct RefreshIconButton: View {
 //   - timer 触发并完成下一个 sync → lastSyncAt 更新，环自然归零
 // 这跟之前用 epoch 取余完全不同：epoch 取余跟 timer 触发时机无关，
 // 环走完一圈不一定真触发 sync，sync 也不一定发生在环归零的瞬间。
+//
+// 最后 3 秒通过 onLast3Seconds 回调告诉父视图进入"紧迫态"：
+//   - 剩余秒数 = ceil(interval - elapsed)（3 → 2 → 1 每秒一次）
+//   - 父视图据此切换 icon → 3/2/1 大数字 + 整按钮 pulse
+//   - 当 lastSyncAt 跨过 60s（下一轮启动），onReset 让父视图退出紧迫态
 private struct RefreshCountdownRing: View {
     let intervalSeconds: TimeInterval
     let lastSyncAt: Date
     let ringSize: CGFloat
     let ringColor: Color
+    var lineWidth: CGFloat = 1.2
+    var urgent: Bool = false
+    var onLast3Seconds: ((Int) -> Void)? = nil
+    var onReset: (() -> Void)? = nil
+
+    // 记上一次上报的剩余秒数，避免每秒多次回调
+    @State private var lastReportedSecs: Int = -1
 
     var body: some View {
-        // .periodic 每秒触发一次重建，开销可忽略
-        TimelineView(.periodic(from: Date(), by: 1)) { context in
+        // .periodic 每 0.25s 触发一次重建（最后 3 秒需要更细的精度捕捉 3→2→1 切换）
+        TimelineView(.periodic(from: Date(), by: 0.25)) { context in
             let elapsed = context.date.timeIntervalSince(lastSyncAt)
+            let remaining = max(0, intervalSeconds - elapsed)
             let phase = intervalSeconds > 0
                 ? max(0, min(elapsed / intervalSeconds, 1.0))
                 : 0
+
+            // 进入"最后 3 秒"通知：remaining ∈ (0, 3] 时，secs = ceil(remaining) ∈ {1,2,3}
+            // only 触发 secs 改变的时刻，避免每 0.25s 帧都回调。
+            //
+            // 注意：SwiftUI ViewBuilder 闭包要求返回 View，side effect 必须
+            // 用 onChange 包成 view。这里用 EmptyView().onChange(of:) 把回调挂上去，
+            // 不破坏 TimelineView 的 Content 类型推断。
+            let secsNow = (remaining > 0 && remaining <= 3.0)
+                ? Int(remaining.rounded(.up))  // 2.7→3, 1.9→2, 0.5→1
+                : -1
+            let _ = Self.reportTick(secsNow, last: lastReportedSecs) { newSecs in
+                if newSecs > 0 {
+                    onLast3Seconds?(newSecs)
+                } else {
+                    onReset?()
+                }
+                lastReportedSecs = newSecs
+            }
+
             ZStack {
                 // 背景暗轨
                 Circle()
                     .stroke(Color.primary.opacity(0.08), lineWidth: 1.2)
                     .frame(width: ringSize - 2, height: ringSize - 2)
                 // 进度弧（从 12 点钟方向顺时针走）
+                // urgent 态描线加粗，颜色饱和度由 ringColor 决定（父视图 urgent 时传 Theme.brand）
                 Circle()
                     .trim(from: 0, to: max(0.001, phase))
-                    .stroke(ringColor, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+                    .stroke(ringColor, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .frame(width: ringSize - 2, height: ringSize - 2)
+                    // urgency 时进度弧叠加柔光
+                    .shadow(color: urgent ? ringColor.opacity(0.6) : .clear, radius: urgent ? 3 : 0)
             }
         }
+    }
+
+    /// 把"剩余秒数变化时触发回调"的 side effect 包成静态函数，避免在 ViewBuilder
+    /// 闭包里直接调用破坏类型推断。只在 secsNow != last 时调用一次 callback。
+    @inline(__always)
+    private static func reportTick(_ secsNow: Int, last: Int, callback: @escaping (Int) -> Void) {
+        guard secsNow != last else { return }
+        DispatchQueue.main.async { callback(secsNow) }
     }
 }
 
