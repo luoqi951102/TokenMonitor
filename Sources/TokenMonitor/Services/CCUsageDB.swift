@@ -31,14 +31,19 @@ final class CCUsageDB {
         // 原因：sandbox 下 SQLite WAL 模式要创建 -wal / -shm 副文件，单文件 bookmark
         // 不允许在同目录创建副文件（SQLITE_CANTOPEN rc=14）。授权目录才能读写所有副文件。
         // 解出目录 URL 后拼 "ccusage.db" 得真实库路径。
-        let resolvedPath: String
-        if let dirURL = BookmarkStore.shared.resolve(.ccusageDB) {
-            securityScopedURL = dirURL
-            resolvedPath = UsageDBPath.ccusagePath(in: dirURL)
-        } else {
-            // sandbox=false 或未授权回退到传入 path
-            resolvedPath = path
+        //
+        // 重要：sandbox=true 下 bookmark resolve 失败时**必须返回 nil**,
+        // 不能 fallback 到 `path` (那是 NSHomeDirectory() 算出的容器路径,
+        // 容器里没有 ~/.claude/ccusage.db, sqlite3_open_v2 会用 CREATE flag
+        // 在容器里建一个空库, 给"已建库但没数据"假象)。这是用户日志里
+        // "无法打开 /Users/X/Library/Containers/com.luoqi.tokenmonitor/Data/.claude/ccusage.db"
+        // 错误的根因。
+        guard let dirURL = BookmarkStore.shared.resolve(.ccusageDB) else {
+            DiagnosticLogger.log("CCUsageDB init = nil — bookmark_claude_dir 未授权 / resolve 失败")
+            return nil
         }
+        securityScopedURL = dirURL
+        let resolvedPath = UsageDBPath.ccusagePath(in: dirURL)
 
         // 用 URI 形式打开
         // READWRITE | CREATE：库不存在则新建，存在则可读写。
@@ -49,7 +54,9 @@ final class CCUsageDB {
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI
         guard sqlite3_open_v2(uri, &db, flags, nil) == SQLITE_OK else {
             sqlite3_close(db)
-            securityScopedURL.map { BookmarkStore.shared.release($0) }
+            BookmarkStore.shared.release(securityScopedURL!)
+            securityScopedURL = nil
+            DiagnosticLogger.log("CCUsageDB init = nil — sqlite3_open_v2 失败, rc=\(String(describing: sqlite3_errcode(db))) path=\(resolvedPath)")
             return nil
         }
         self.handle = db
@@ -58,6 +65,7 @@ final class CCUsageDB {
         if let handle {
             DBMigration.idempotentMigrate(on: handle)
         }
+        DiagnosticLogger.log("CCUsageDB init OK — path=\(resolvedPath)")
     }
 
     deinit {

@@ -26,18 +26,19 @@ final class UsageDB {
         self.path = path
 
         // Key.ccusageDB bookmark 授权的是 **`.claude` 目录**（详见 CCUsageDB.init?）。
-        // 解出目录 URL 后拼 "ccusage.db" 得真实库路径。
-        let resolvedPath: String
-        if let dirURL = BookmarkStore.shared.resolve(.ccusageDB) {
-            securityScopedURL = dirURL
-            resolvedPath = UsageDBPath.ccusagePath(in: dirURL)
-        } else {
-            // sandbox=false 或未授权回退到传入 path
-            resolvedPath = path
+        // sandbox=true 下必须走 bookmark, 不能 fallback 到 path (容器路径给假象成功)。
+        // 跟 CCUsageDB.init 一致: 未授权 → 返回 nil (UI 显示"未连接", 上层明确路径)。
+        guard let dirURL = BookmarkStore.shared.resolve(.ccusageDB) else {
+            DiagnosticLogger.log("UsageDB init = nil — bookmark_claude_dir 未授权 / resolve 失败")
+            return nil
         }
+        securityScopedURL = dirURL
+        let resolvedPath = UsageDBPath.ccusagePath(in: dirURL)
 
         guard FileManager.default.fileExists(atPath: resolvedPath) else {
-            securityScopedURL.map { BookmarkStore.shared.release($0) }
+            BookmarkStore.shared.release(securityScopedURL!)
+            securityScopedURL = nil
+            DiagnosticLogger.log("UsageDB init = nil — \(resolvedPath) 文件不存在 (ccusage.db 还没建, 先手动同步一次让 CCUsageDB 建库)")
             return nil
         }
 
@@ -56,11 +57,14 @@ final class UsageDB {
             let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_URI
             if sqlite3_open_v2(url, &db, flags, nil) == SQLITE_OK {
                 self.handle = db
+                DiagnosticLogger.log("UsageDB init OK — path=\(resolvedPath)")
                 return
             }
             sqlite3_close(db)
         }
-        securityScopedURL.map { BookmarkStore.shared.release($0) }
+        BookmarkStore.shared.release(securityScopedURL!)
+        securityScopedURL = nil
+        DiagnosticLogger.log("UsageDB init = nil — sqlite3_open_v2 全部候选失败")
         return nil
     }
 

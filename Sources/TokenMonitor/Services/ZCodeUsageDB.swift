@@ -22,19 +22,26 @@ final class ZCodeUsageDB {
     init?(path: String) {
         self.path = path
 
-        let resolvedPath: String
-        if let bookmarkURL = BookmarkStore.shared.resolve(.zcodeDB) {
-            securityScopedURL = bookmarkURL
-            resolvedPath = bookmarkURL.path
-        } else {
-            resolvedPath = path
+        // sandbox=true 下 bookmark resolve 失败 → 直接返回 nil (跟 CCUsageDB/UsageDB 一致)
+        // 不 fallback 到容器路径 (容器里没 ~/.zcode/cli/db/db.sqlite).
+        guard let bookmarkURL = BookmarkStore.shared.resolve(.zcodeDB) else {
+            DiagnosticLogger.log("ZCodeUsageDB init = nil — bookmark_zcode_db 未授权 / resolve 失败")
+            return nil
         }
+        securityScopedURL = bookmarkURL
+        let resolvedPath = bookmarkURL.path
 
         guard FileManager.default.fileExists(atPath: resolvedPath) else {
-            securityScopedURL.map { BookmarkStore.shared.release($0) }
+            BookmarkStore.shared.release(securityScopedURL!)
+            securityScopedURL = nil
+            DiagnosticLogger.log("ZCodeUsageDB init = nil — \(resolvedPath) 文件不存在 (未安装 ZCode?)")
             return nil
         }
 
+        // ZCode 原生库打开方式：immutable=1 → mode=ro 两级降级。
+        // immutable=1 假定文件永不变,忽略 -wal,适合"只读快照"场景；
+        // mode=ro 会读 WAL, 适合"想看到最新"场景。
+        // 顺序保持 immutable=1 优先(只读快照, 不抢锁, 适合 widget 聚合, 工具调用统计容忍 1 分钟延迟)。
         let candidates = [
             "file:\(resolvedPath)?immutable=1",
             "file:\(resolvedPath)?mode=ro",
@@ -44,11 +51,14 @@ final class ZCodeUsageDB {
             let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_URI
             if sqlite3_open_v2(url, &db, flags, nil) == SQLITE_OK {
                 self.handle = db
+                DiagnosticLogger.log("ZCodeUsageDB init OK — path=\(resolvedPath)")
                 return
             }
             sqlite3_close(db)
         }
-        securityScopedURL.map { BookmarkStore.shared.release($0) }
+        BookmarkStore.shared.release(securityScopedURL!)
+        securityScopedURL = nil
+        DiagnosticLogger.log("ZCodeUsageDB init = nil — sqlite3_open_v2 全部候选失败, path=\(resolvedPath)")
         return nil
     }
 
