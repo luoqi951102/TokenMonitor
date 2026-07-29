@@ -89,6 +89,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 下 SQLite 写 -wal/-shm 副文件被拒的问题。旧 bookmark 不清掉会 stale，但仍
         // 占 UserDefaults 空间，且 may 让老用户混淆 → 启动即清。
         BookmarkStore.clearStaleFileBookmarkIfAny()
+        // 一次性清理：旧版 bookmark 是用 `options: []`(不带 security scope) 存的,
+        // 新版一律走 `.withSecurityScope`, 旧 bookmark resolve 必然 startAccessing=false,
+        // 启动时清掉让用户重新走一次 NSOpenPanel 授权, 拿到带 scope tag 的新 bookmark。
+        BookmarkStore.clearIncompatibleBookmarks()
 
         // 记录启动时 bookmark 状态（用户授权情况）
         DiagnosticLogger.log("启动期 bookmark has: ccusageDB=\(BookmarkStore.shared.has(.ccusageDB)) projects=\(BookmarkStore.shared.has(.claudeProjectsDir)) zcode=\(BookmarkStore.shared.has(.zcodeDB))")

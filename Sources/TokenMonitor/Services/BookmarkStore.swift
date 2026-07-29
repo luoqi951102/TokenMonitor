@@ -40,21 +40,59 @@ final class BookmarkStore {
         }
     }
 
+    /// 迁移：旧版 bookmark 是用 `options: []`(不带 security scope) 存的,
+    /// 新版改用 `.withSecurityScope`, 旧 bookmark resolve 时会抛 incompatible options
+    /// 异常 (sqlite 实测日志给出的就是这种症状: startAccessing=false)。
+    /// 启动时一次性清掉所有用旧 options 存的 bookmark, 让用户重新授权一次拿到 scope tag。
+    @MainActor
+    static func clearIncompatibleBookmarks() {
+        let keysToCheck: [Key] = [.ccusageDB, .zcodeDB, .ccUsageExe, .claudeProjectsDir, .claudeSettings]
+        var cleared = [String]()
+        for k in keysToCheck {
+            let raw = k.rawValue
+            if UserDefaults.standard.data(forKey: raw) == nil { continue }
+            // 用新 option 试 resolve, 失败/抛错 = 不兼容
+            var stale = false
+            do {
+                let data = UserDefaults.standard.data(forKey: raw) ?? Data()
+                _ = try URL(
+                    resolvingBookmarkData: data,
+                    options: [.withSecurityScope],
+                    relativeTo: nil,
+                    bookmarkDataIsStale: &stale
+                )
+                // resolve 成功就保留 (它是带 security scope 的)
+            } catch {
+                UserDefaults.standard.removeObject(forKey: raw)
+                cleared.append(raw)
+            }
+        }
+        if !cleared.isEmpty {
+            DiagnosticLogger.log("clearIncompatibleBookmarks — 已清除不带 security scope 的旧 bookmark: \(cleared.joined(separator: ", "))")
+        }
+    }
+
     // MARK: - Save
 
     /// 把用户授权的 URL 存为 bookmark。
     /// 成功返回 true。
+    ///
+    /// 关键：sandbox=true 下必须用 `.withSecurityScope` option，否则重启后
+    /// resolve 出来的 URL `startAccessingSecurityScopedResource()` 必然返回 false
+    /// (sandbox 拒绝把 security scope 附给一个不带 scope tag 的 bookmark)。
+    /// 这是用户日志里"startAccessing=false, 仍返回 URL 但读写会失败"的根因。
     @discardableResult
     func save(_ url: URL, for key: Key) -> Bool {
         do {
             let data = try url.bookmarkData(
-                options: [],
+                options: [.withSecurityScope],
                 includingResourceValuesForKeys: nil,
                 relativeTo: nil
             )
             defaults.set(data, forKey: key.rawValue)
             return true
         } catch {
+            DiagnosticLogger.log("BookmarkStore.save(\(key.rawValue)) throws: \(error)")
             return false
         }
     }
@@ -63,6 +101,12 @@ final class BookmarkStore {
 
     /// 还原 bookmark 为 URL，并调用 startAccessingSecurityScopedResource()。
     /// 返回的 URL 用完后**必须**调用 release()。
+    ///
+    /// 关键：sandbox=true 下 resolve 也必须用 `.withSecurityScope` option (跟 save 对称),
+    /// 否则 resolve 出来的 URL 不带 security-scope tag, startAccessingSecurityScopedResource()
+    /// 会返回 false。sandbox 下读外部文件唯一合法路径就是这条。
+    /// resolve 在 startAccess 失败时返回 nil, 不再 fallback 返回 URL——否则上层会
+    /// 拿到能存路径但不能读写的死 URL, 误导 UI 显示"路径有效但全 0 数据"假象。
     func resolve(_ key: Key) -> URL? {
         guard let data = defaults.data(forKey: key.rawValue) else {
             DiagnosticLogger.log("BookmarkStore.resolve(\(key.rawValue)) = nil — UserDefaults 里没存 bookmark data")
@@ -72,7 +116,7 @@ final class BookmarkStore {
         do {
             let url = try URL(
                 resolvingBookmarkData: data,
-                options: [],
+                options: [.withSecurityScope],
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
             )
@@ -86,9 +130,9 @@ final class BookmarkStore {
                 DiagnosticLogger.log("BookmarkStore.resolve(\(key.rawValue)) OK startAccessing → \(url.path)")
                 return url
             }
-            // 启动授权失败也返回 URL（用于路径展示），但读 db 会失败
-            DiagnosticLogger.log("BookmarkStore.resolve(\(key.rawValue)) WARN startAccessing=false, 仍返回 URL 但读写会失败: \(url.path)")
-            return url
+            // startAccess 失败：sandbox 没有 extension。返回 nil, 让上层走"请重新授权"路径。
+            DiagnosticLogger.log("BookmarkStore.resolve(\(key.rawValue)) = nil — startAccessingSecurityScopedResource() 返回 false, sandbox 拒绝授权")
+            return nil
         } catch {
             DiagnosticLogger.log("BookmarkStore.resolve(\(key.rawValue)) throws: \(error)")
             return nil
