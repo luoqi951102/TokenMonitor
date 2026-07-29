@@ -391,95 +391,55 @@ struct ContentView: View {
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 12)
-            } else if displayData.count <= 14 {
-                // 稀疏场景仍用柱状图（每柱留有数字 + 日期标签的空间）
+            } else {
+                // 统一用柱状图渲染所有 range：日/周/上周/月/全部 都走同一套,
+                // 视觉对齐 + 切 range 时视线连续。柱子 > 14 根时只显示 selected 柱
+                // 的数字（避免 30+ 根柱子挤一起上方数字标签碰撞）。
                 let maxTokens = displayData.map(\.tokens).max() ?? 1
-                let spacing: CGFloat = displayData.count > 10 ? 3 : 5
+                let n = displayData.count
+                let spacing: CGFloat = n > 20 ? 1.5 : (n > 10 ? 3 : 5)
+                let showAllTexts: Bool = n <= 14
                 HStack(alignment: .bottom, spacing: spacing) {
-                    ForEach(displayData) { d in
+                    ForEach(Array(displayData.enumerated()), id: \.element.id) { idx, d in
                         VStack(spacing: 2) {
-                            Text(formatTokens(d.tokens))
-                                .font(Theme.Typography.captionMonospaced)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.6)
+                            // 仅在样本较少（≤ 14）时给每根柱顶展示数字；
+                            // 样本 14-31 时只显示最高柱的数字避免拥挤
+                            if showAllTexts || d.tokens == maxTokens {
+                                Text(formatTokens(d.tokens))
+                                    .font(Theme.Typography.captionMonospaced)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.6)
+                            } else {
+                                // 占位透明 Text, 让全部柱子的布局对齐 (柱顶都从相同 baseline 起)
+                                Text("0")
+                                    .font(Theme.Typography.captionMonospaced)
+                                    .foregroundStyle(.clear)
+                                    .lineLimit(1)
+                            }
                             RoundedRectangle(cornerRadius: Theme.Radius.bar, style: .continuous)
                                 .fill(Theme.chartBar)
                                 .frame(height: barHeight(d.tokens, max: maxTokens))
-                            Text(String(d.date.suffix(5)))
-                                .font(Theme.Typography.caption)
-                                .foregroundStyle(.tertiary)
+                            // 日期标签: 太密时只标首尾 + 中点; ≤14 根都标
+                            if showAllTexts || idx == 0 || idx == n - 1 || (n > 3 && idx == n / 2) {
+                                Text(String(d.date.suffix(5)))
+                                    .font(Theme.Typography.caption)
+                                    .foregroundStyle(.tertiary)
+                            } else {
+                                Text("00/00")
+                                    .font(Theme.Typography.caption)
+                                    .foregroundStyle(.clear)
+                            }
                         }
                         .frame(maxWidth: .infinity)
                     }
                 }
                 .frame(height: 90)
-            } else {
-                // 密集场景用 sparkline（hairline + 末端 accent dot）
-                trendSparkline(displayData)
-                    .frame(height: 56)
             }
         }
         .padding(14)
         .background(Theme.cardBackground(for: colorScheme))
         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-    }
-
-    /// 1px hairline Path sparkline，跟随容器宽度自适应。
-    /// 末端（最新数据点）叠一个 accent color 点，强化"现在"的视觉锚点。
-    private func trendSparkline(_ data: [DailyTotal]) -> some View {
-        let maxTokens = max(data.map(\.tokens).max() ?? 1, 1)
-        let last = data.last?.tokens ?? 0
-
-        return GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
-            let stepX = data.count > 1 ? w / CGFloat(data.count - 1) : w
-            let points = data.enumerated().map { (i, d) -> CGPoint in
-                let x = CGFloat(i) * stepX
-                let y = h - (CGFloat(d.tokens) / CGFloat(maxTokens)) * (h - 4) - 2
-                return CGPoint(x: x, y: y)
-            }
-
-            ZStack {
-                // hairline path
-                Path { p in
-                    guard let first = points.first else { return }
-                    p.move(to: first)
-                    for pt in points.dropFirst() {
-                        p.addLine(to: pt)
-                    }
-                }
-                .stroke(
-                    Theme.brand.opacity(0.55),
-                    style: StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round)
-                )
-
-                // 末端 accent dot（5pt 圆点，1pt 宽白色 ring 跟线分离）
-                if let lastPt = points.last {
-                    Circle()
-                        .fill(Theme.brand)
-                        .frame(width: 5, height: 5)
-                        .overlay(
-                            Circle()
-                                .stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 1)
-                        )
-                        .position(lastPt)
-                }
-
-                // 末端 token 数字（在点上方）
-                if let lastPt = points.last {
-                    Text(formatTokens(last))
-                        .font(Theme.Typography.captionMonospaced)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Theme.cardBackground(for: colorScheme).opacity(0.85))
-                        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-                        .position(x: min(lastPt.x, w - 36), y: lastPt.y - 10)
-                }
-            }
-        }
     }
 
     private func barHeight(_ v: Int, max m: Int) -> CGFloat {
