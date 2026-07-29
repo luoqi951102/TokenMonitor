@@ -64,7 +64,10 @@ final class BookmarkStore {
     /// 还原 bookmark 为 URL，并调用 startAccessingSecurityScopedResource()。
     /// 返回的 URL 用完后**必须**调用 release()。
     func resolve(_ key: Key) -> URL? {
-        guard let data = defaults.data(forKey: key.rawValue) else { return nil }
+        guard let data = defaults.data(forKey: key.rawValue) else {
+            DiagnosticLogger.log("BookmarkStore.resolve(\(key.rawValue)) = nil — UserDefaults 里没存 bookmark data")
+            return nil
+        }
         var isStale = false
         do {
             let url = try URL(
@@ -76,14 +79,18 @@ final class BookmarkStore {
             // stale bookmark 需要用户重新授权（这里返回 nil 让 UI 提示）
             if isStale {
                 defaults.removeObject(forKey: key.rawValue)
+                DiagnosticLogger.log("BookmarkStore.resolve(\(key.rawValue)) = nil — bookmark 已 stale, 已清 UserDefaults")
                 return nil
             }
             if url.startAccessingSecurityScopedResource() {
+                DiagnosticLogger.log("BookmarkStore.resolve(\(key.rawValue)) OK startAccessing → \(url.path)")
                 return url
             }
             // 启动授权失败也返回 URL（用于路径展示），但读 db 会失败
+            DiagnosticLogger.log("BookmarkStore.resolve(\(key.rawValue)) WARN startAccessing=false, 仍返回 URL 但读写会失败: \(url.path)")
             return url
         } catch {
+            DiagnosticLogger.log("BookmarkStore.resolve(\(key.rawValue)) throws: \(error)")
             return nil
         }
     }

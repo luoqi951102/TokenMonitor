@@ -81,12 +81,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 先装崩溃诊断（任何后续 SwiftUI layout 异常都会写到容器诊断文件）
         installCrashDiagnostics()
+        DiagnosticLogger.log("=== App 启动 ===")
+        DiagnosticLogger.log("container home=\(NSHomeDirectory())")
 
         // 一次性清理：旧版 ccusage.db 单文件 bookmark（key="bookmark_ccusage_db"），
         // 0.2.0 起改成 .claude 目录授权（key="bookmark_claude_dir"）以解决 sandbox
         // 下 SQLite 写 -wal/-shm 副文件被拒的问题。旧 bookmark 不清掉会 stale，但仍
         // 占 UserDefaults 空间，且 may 让老用户混淆 → 启动即清。
         BookmarkStore.clearStaleFileBookmarkIfAny()
+
+        // 记录启动时 bookmark 状态（用户授权情况）
+        DiagnosticLogger.log("启动期 bookmark has: ccusageDB=\(BookmarkStore.shared.has(.ccusageDB)) projects=\(BookmarkStore.shared.has(.claudeProjectsDir)) zcode=\(BookmarkStore.shared.has(.zcodeDB))")
 
         menuBarManager = MenuBarManager()
         menuBarManager?.bootstrap()

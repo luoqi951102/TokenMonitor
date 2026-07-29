@@ -101,19 +101,24 @@ final class SyncRunner: ObservableObject {
         guard !isSyncing else { return }
         isSyncing = true
         lastError = nil
+        DiagnosticLogger.log("syncNow begin, allGranted=\(SandboxAuthorizer.allGranted)")
 
         if SandboxAuthorizer.allGranted {
             // 真同步路径
             do {
                 lastStats = try await runSwiftSync()
                 lastSyncAt = Date()
+                let r = lastStats
+                DiagnosticLogger.log("syncNow 成功 — claude.scanned=\(r?.claude.scanned ?? 0) records=\(r?.claude.records ?? 0) zcode.new=\(r?.zcode.new ?? 0) skip=\(r?.zcode.skipped ?? 0)")
             } catch {
                 lastError = "Swift 同步失败：\(error.localizedDescription)"
+                DiagnosticLogger.log("syncNow 抛错: \(error.localizedDescription)")
             }
         } else {
             // fallback：sandbox 下未授权，只做视觉反馈
             try? await Task.sleep(nanoseconds: 300_000_000)
             lastSyncAt = Date()
+            DiagnosticLogger.log("syncNow fallback (allGranted=false) — 跳过真同步")
         }
 
         isSyncing = false
@@ -124,41 +129,42 @@ final class SyncRunner: ObservableObject {
     /// 整轮 sync 期间长持有 security-scoped URL，sync 完才 release。
     /// 必须在后台跑（IO 密集），调用方负责切线程。
     nonisolated func runSwiftSync() async throws -> SyncReport {
-        // 1. 长持有三个 security-scoped URL，整轮 sync 期间不复用、不释放
-        //    projects 目录授权 (Key.claudeProjectsDir) → 扫 JSONL
-        //    zcode DB 授权 (Key.zcodeDB) → 增量读 model_usage
-        //    ccusage DB 授权 (Key.ccusageDB) → 可写句柄打开它
-        // 注：CCUsageDB 内部自己 resolve/release .ccusageDB bookmark（init/deinit 配对），
-        //     所以这里只额外长持有 projects 和 zcode 两个 URL。
+        DiagnosticLogger.log("runSwiftSync begin")
+        // 1. 长持有三个 security-scoped URL
         guard let projectsURL = BookmarkStore.shared.resolve(.claudeProjectsDir) else {
+            DiagnosticLogger.log("resolve(.claudeProjectsDir) 失败 — bookmark 缺/stale/startAccessing 失败")
             throw SyncError.notAuthorized("Claude projects 目录未授权")
         }
         defer { BookmarkStore.shared.release(projectsURL) }
+        DiagnosticLogger.log("projectsURL resolved OK: \(projectsURL.path)")
 
         guard let zcodeURL = BookmarkStore.shared.resolve(.zcodeDB) else {
+            DiagnosticLogger.log("resolve(.zcodeDB) 失败 — bookmark 缺/stale/startAccessing 失败")
             throw SyncError.notAuthorized("ZCode 数据库未授权")
         }
         defer { BookmarkStore.shared.release(zcodeURL) }
+        DiagnosticLogger.log("zcodeDB URL resolved OK: \(zcodeURL.path)")
 
         // 2. 打开可写 ccusage.db 句柄
         guard let db = CCUsageDB(path: UsageDBPath.ccusageDefault) else {
+            DiagnosticLogger.log("CCUsageDB init 失败 — 无法打开 ccusage.db (sqlite3_open_v2 错或 .claude bookmark resolve 失败)")
             throw SyncError.dbOpenFailed(UsageDBPath.ccusageDefault)
         }
+        DiagnosticLogger.log("CCUsageDB init OK, isOpen=\(db.isOpen)")
         // db 在 return 后出作用域自动 deinit（关句柄 + release bookmark + 最后一次 checkpoint）
 
         // 3. Claude JSONL 同步
         var report = SyncReport()
         report.claude = ClaudeSync.sync(db: db, projectsDirURL: projectsURL)
+        DiagnosticLogger.log("ClaudeSync 完成: scanned=\(report.claude.scanned) records=\(report.claude.records) newFiles=\(report.claude.newFiles) updated=\(report.claude.updated) err=\(report.claude.errors)")
 
         // 4. ZCode model_usage 增量同步
         report.zcode = ZCodeSync.sync(db: db, zcodeDB: zcodeURL)
+        DiagnosticLogger.log("ZCodeSync 完成: new=\(report.zcode.new) skip=\(report.zcode.skipped) err=\(report.zcode.errors) watermark before=\(report.zcode.watermarkBefore) after=\(report.zcode.watermarkAfter)")
 
-        // 5. 主动 checkpoint，把 WAL 里的新页落回主库 —— 关键修复：
-        //    UsageDB 用 mode=ro 虽然能读 WAL，但 ccusage.db 主库 mtime 不变化，
-        //    reopenDBIfChanged() 就感知不到（WAL 写不更新主库 mtime）。
-        //    PASSIVE checkpoint 把 WAL 合并回主库后，主库 mtime 才会推进，
-        //    下次 reopenDBIfChanged 才会重建 aggregator 拿到新数据。
+        // 5. 主动 checkpoint
         db.checkpointWAL()
+        DiagnosticLogger.log("WAL checkpoint 完成 (PASSIVE)")
 
         return report
     }

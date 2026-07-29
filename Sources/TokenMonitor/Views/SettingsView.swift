@@ -27,6 +27,7 @@ struct SettingsView: View {
                 databaseSection
                 historyFixSection
                 defaultsSection
+                diagnosticSection
                 aboutSection
             }
             .padding(20)
@@ -69,6 +70,27 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.bordered)
                     Spacer()
+                }
+
+                // 同步错误显示 — 让 lastError 不再被吞噬, 直接红字给出
+                if let err = viewModel.syncRunner.lastError {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                            .font(.caption)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("同步失败")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.red)
+                            Text(err)
+                                .font(.caption2)
+                                .foregroundStyle(.red.opacity(0.8))
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(8)
+                    .background(Color.red.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
 
                 Divider().opacity(0.3)
@@ -533,6 +555,52 @@ struct SettingsView: View {
                         .font(.caption2)
                         .foregroundStyle(.red)
                 }
+            }
+        }
+    }
+
+    // MARK: - 诊断
+
+    @ViewBuilder
+    private var diagnosticSection: some View {
+        card(title: "诊断", icon: "stethoscope") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("当数据全部显示为 0 时，请运行一次同步后复制下方诊断内容给开发者。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    Button("立即同步") {
+                        Task { await viewModel.manualSync() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.brand)
+
+                    Button("清空日志") {
+                        DiagnosticLogger.clear()
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button("复制") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(DiagnosticLogger.summary(), forType: .string)
+                    }
+                    .buttonStyle(.bordered)
+
+                    Spacer()
+                }
+
+                ScrollView {
+                    Text(DiagnosticLogger.summary())
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                }
+                .frame(maxHeight: 180)
+                .padding(8)
+                .background(Color.black.opacity(0.3))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
             }
         }
     }
