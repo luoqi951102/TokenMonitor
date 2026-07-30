@@ -128,7 +128,7 @@ final class Aggregator {
             params: [range.start, range.end] + sourceParams(sourceFilter)
         ) { row in
             rows.append(ModelUsage(
-                model: row.string(at: 0),
+                model: normalizeModel(row.string(at: 0)),
                 source: row.string(at: 1),
                 provider: row.string(at: 2),
                 inputTokens: row.int(at: 3),

@@ -300,6 +300,36 @@ func inferProviderFromModel(_ model: String) -> String {
     return ""
 }
 
+/// 规范化 model 名：把同一基模型的不同变体合并到统一标识,
+/// 避免在 Top 模型 / 柱状图里被拆成多行统计。
+///
+/// 当前规则：
+///   - 剥后缀 "[1m]"/"[2m]"/"[xxx]" 等 → 如 "glm-5.2[1m]" → "glm-5.2"
+///     ZCode 把 1M 长上下文变体写成 "[1m]" 后缀, 但 token 维度仍是同一模型,
+///     拆统计无意义且 Top 模型表会一分为二
+///   - 不剥其他后缀（如 "claude-sonnet-4-5-20250929" 这种日期版本号有意义, 留着）
+///
+/// 调用点：Aggregator.models / ZCodeUsageDB.toolCallsByModel 等
+/// 所有"读 DB 的 model 列"处都应走这个函数, 让下游聚合稳定。
+func normalizeModel(_ model: String) -> String {
+    // 剥 [...] 后缀：匹配结尾的 [1m] / [2m] / [any-thing] 这种方括号标签
+    // 仅剥尾部一个方括号组, 不动中间; 不剥其他 sep
+    if let bracketStart = model.lastIndex(of: "["),
+       bracketStart < model.endIndex {
+        let after = model.index(after: bracketStart)
+        if after < model.endIndex, model[after] != "/" {
+            // 确认这个 [ 真是"尾部一组"的起点 (不是 model 中间某个 [)
+            let tail = model[bracketStart...]
+            if tail.hasPrefix("[") && tail.hasSuffix("]") && !tail.dropFirst().contains("[") {
+                let trimmed = String(model[..<bracketStart])
+                // 仅当 trim 后剩下基础名非空 (防止极端 "[1m]" 单独输入变空串)
+                return trimmed.isEmpty ? model : trimmed
+            }
+        }
+    }
+    return model
+}
+
 /// UUID provider 映射表（用户提供的供应商名）。
 /// 这些 UUID 是 ZCode model_usage.provider_id 字段，区分同一 model 的不同供应商。
 let ProviderUUIDMap: [String: String] = [
