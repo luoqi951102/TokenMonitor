@@ -25,15 +25,15 @@ final class UsageDB {
     init?(path: String) {
         self.path = path
 
-        // Key.ccusageDB bookmark 授权的是 **`.claude` 目录**（详见 CCUsageDB.init?）。
-        // sandbox=true 下必须走 bookmark, 不能 fallback 到 path (容器路径给假象成功)。
-        // 跟 CCUsageDB.init 一致: 未授权 → 返回 nil (UI 显示"未连接", 上层明确路径)。
-        guard let dirURL = BookmarkStore.shared.resolve(.ccusageDB) else {
-            DiagnosticLogger.log("UsageDB init = nil — bookmark_claude_dir 未授权 / resolve 失败")
-            return nil
+        // 优先走 bookmark（sandbox 模式必需）；bookmark 不可用时 fallback 到 path。
+        // sandbox=false 下 NSHomeDirectory() 返回真实 ~, path 就是 ~/.claude/ccusage.db。
+        let resolvedPath: String
+        if let dirURL = BookmarkStore.shared.resolve(.ccusageDB) {
+            securityScopedURL = dirURL
+            resolvedPath = UsageDBPath.ccusagePath(in: dirURL)
+        } else {
+            resolvedPath = path
         }
-        securityScopedURL = dirURL
-        let resolvedPath = UsageDBPath.ccusagePath(in: dirURL)
 
         guard FileManager.default.fileExists(atPath: resolvedPath) else {
             BookmarkStore.shared.release(securityScopedURL!)

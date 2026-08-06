@@ -27,23 +27,18 @@ final class CCUsageDB {
     init?(path: String) {
         self.path = path
 
-        // Key.ccusageDB bookmark 授权的是 **`.claude` 目录**（不是 ccusage.db 文件）。
-        // 原因：sandbox 下 SQLite WAL 模式要创建 -wal / -shm 副文件，单文件 bookmark
-        // 不允许在同目录创建副文件（SQLITE_CANTOPEN rc=14）。授权目录才能读写所有副文件。
-        // 解出目录 URL 后拼 "ccusage.db" 得真实库路径。
-        //
-        // 重要：sandbox=true 下 bookmark resolve 失败时**必须返回 nil**,
-        // 不能 fallback 到 `path` (那是 NSHomeDirectory() 算出的容器路径,
-        // 容器里没有 ~/.claude/ccusage.db, sqlite3_open_v2 会用 CREATE flag
-        // 在容器里建一个空库, 给"已建库但没数据"假象)。这是用户日志里
-        // "无法打开 /Users/X/Library/Containers/com.luoqi.tokenmonitor/Data/.claude/ccusage.db"
-        // 错误的根因。
-        guard let dirURL = BookmarkStore.shared.resolve(.ccusageDB) else {
-            DiagnosticLogger.log("CCUsageDB init = nil — bookmark_claude_dir 未授权 / resolve 失败")
-            return nil
+        // 优先走 bookmark（sandbox 模式必需）；bookmark 不可用时 fallback 到 path。
+        // sandbox=false 下 NSHomeDirectory() 返回真实 ~, path 就是 ~/.claude/ccusage.db,
+        // 不需要 bookmark 就能直接读写。sandbox=true 下 path 是容器路径,
+        // 必须 bookmark 成功才能访问真实路径。
+        let resolvedPath: String
+        if let dirURL = BookmarkStore.shared.resolve(.ccusageDB) {
+            securityScopedURL = dirURL
+            resolvedPath = UsageDBPath.ccusagePath(in: dirURL)
+        } else {
+            // bookmark 不可用 -> 用传入 path（sandbox=false 下是真实 ~/.claude/ccusage.db）
+            resolvedPath = path
         }
-        securityScopedURL = dirURL
-        let resolvedPath = UsageDBPath.ccusagePath(in: dirURL)
 
         // 用 URI 形式打开
         // READWRITE | CREATE：库不存在则新建，存在则可读写。

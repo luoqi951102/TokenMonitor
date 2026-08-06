@@ -2,16 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- ad-hoc 签名下 sandbox=true 会导致 security-scoped bookmark 创建失败
+	     (Code 256 "Failed to retrieve app-scope key")。禁用 sandbox 后 App
+	     直接访问 ~/.claude 和 ~/.zcode，无需 bookmark 机制。 -->
 	<key>com.apple.security.app-sandbox</key>
-	<true/>
+	<false/>
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>N5YV5FV235.group.com.luoqi.tokenmonitor</string>
 	</array>
-	<key>com.apple.security.files.bookmarks.app</key>
-	<true/>
-	<!-- read-write 而非 read-only：Swift sync 私有化要写 ~/.claude/ccusage.db -->
-	<key>com.apple.security.files.user-selected.read-write</key>
-	<true/>
 </dict>
 </plist>

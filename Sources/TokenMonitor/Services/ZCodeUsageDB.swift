@@ -22,14 +22,15 @@ final class ZCodeUsageDB {
     init?(path: String) {
         self.path = path
 
-        // sandbox=true 下 bookmark resolve 失败 → 直接返回 nil (跟 CCUsageDB/UsageDB 一致)
-        // 不 fallback 到容器路径 (容器里没 ~/.zcode/cli/db/db.sqlite).
-        guard let bookmarkURL = BookmarkStore.shared.resolve(.zcodeDB) else {
-            DiagnosticLogger.log("ZCodeUsageDB init = nil — bookmark_zcode_db 未授权 / resolve 失败")
-            return nil
+        // 优先走 bookmark（sandbox 模式必需）；bookmark 不可用时 fallback 到 path。
+        // sandbox=false 下 NSHomeDirectory() 返回真实 ~, path 就是 ~/.zcode/cli/db/db.sqlite。
+        let resolvedPath: String
+        if let bookmarkURL = BookmarkStore.shared.resolve(.zcodeDB) {
+            securityScopedURL = bookmarkURL
+            resolvedPath = bookmarkURL.path
+        } else {
+            resolvedPath = path
         }
-        securityScopedURL = bookmarkURL
-        let resolvedPath = bookmarkURL.path
 
         guard FileManager.default.fileExists(atPath: resolvedPath) else {
             BookmarkStore.shared.release(securityScopedURL!)
