@@ -881,10 +881,12 @@ private struct LargeContent: View {
             // 既达到底部对齐效果又不依赖 baseline。
             HStack(spacing: 2) {
                 ForEach(data) { d in
+                    let isMax = d.tokens == maxTokens && maxTokens > 0
                     RoundedRectangle(cornerRadius: 1.5)
-                        .fill(Theme.chartBar)
+                        .fill(isMax ? Theme.brandGradient : Theme.chartBar)
                         .frame(maxWidth: .infinity)
                         .frame(height: barHeight(d.tokens, max: maxTokens), alignment: .bottom)
+                        .animation(.spring(response: 0.45, dampingFraction: 0.75), value: data)
                 }
             }
             .frame(height: 30, alignment: .bottom)

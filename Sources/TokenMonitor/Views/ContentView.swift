@@ -60,6 +60,9 @@ struct ContentView: View {
                         ToolCallView(viewModel: viewModel)
                     }
                 }
+                // tab 切换时内容整体上浮淡入（配合 tabBar 的 withAnimation）
+                .id(tab)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
             .padding(16)
         }
@@ -76,7 +79,10 @@ struct ContentView: View {
     private var tabBar: some View {
         HStack(spacing: 2) {
             ForEach(Tab.allCases, id: \.self) { t in
-                Button(action: { tab = t }) {
+                Button(action: {
+                    // tab 切换带过渡动画：内容整体上浮淡入
+                    withAnimation(.easeOut(duration: 0.22)) { tab = t }
+                }) {
                     HStack(spacing: 4) {
                         Image(systemName: t.icon).font(.system(size: 10))
                         Text(t.label).font(Theme.Typography.body.weight(tab == t ? .semibold : .regular))
@@ -101,12 +107,22 @@ struct ContentView: View {
     private var overviewTab: some View {
         VStack(alignment: .leading, spacing: 10) {
             kpiRow
+                .staggerAppear(tab: tab, index: 0)
             // streak（跨 range 不变，永远显示当前状态）
             StreakCard(streak: viewModel.streak)
+                .staggerAppear(tab: tab, index: 1)
             topModelsCard
+                .staggerAppear(tab: tab, index: 2)
             // 项目维度 Top 5
             ProjectRankingView(projects: viewModel.topProjects(5))
+                .staggerAppear(tab: tab, index: 3)
+            // 今日时段分布（仅今日且有数据时显示）
+            if viewModel.range == .today && !viewModel.hourly.isEmpty {
+                hourlyCard
+                    .staggerAppear(tab: tab, index: 4)
+            }
             trendCard
+                .staggerAppear(tab: tab, index: 5)
         }
     }
 
@@ -283,6 +299,51 @@ struct ContentView: View {
                     .padding(.vertical, 16)
             } else {
                 let maxTotal = viewModel.models.first?.totalTokens ?? 1
+                // 环形占比图 + 精简 Top 6 列表（并排），占比一目了然
+                let top6 = Array(viewModel.models.prefix(6))
+                let totalTokens = top6.reduce(0) { $0 + $1.totalTokens }
+                HStack(alignment: .center, spacing: 14) {
+                    // 环形占比图：Top 6 模型按 token 占比
+                    DonutChart(
+                        segments: top6.map { usage in
+                            DonutSegment(
+                                color: Theme.modelColor(usage.model + usage.provider),
+                                value: Double(usage.totalTokens)
+                            )
+                        },
+                        ringWidth: 12,
+                        centerTitle: "Top \(top6.count)",
+                        centerValue: formatTokens(totalTokens)
+                    )
+                    .frame(width: 108, height: 108)
+
+                    // 右侧：Top 6 排名（紧凑版，带占比百分比）
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(top6.enumerated()), id: \.element.id) { idx, usage in
+                            HStack(spacing: 6) {
+                                Text("\(idx + 1)")
+                                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.tertiary)
+                                    .frame(width: 12, alignment: .center)
+                                Circle()
+                                    .fill(Theme.modelColor(usage.model + usage.provider))
+                                    .frame(width: 6, height: 6)
+                                Text(usage.model)
+                                    .font(Theme.Typography.caption.weight(.medium))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer()
+                                Text("\(Int(Double(usage.totalTokens) / Double(max(1, totalTokens)) * 100))%")
+                                    .font(.system(size: 9, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                .padding(.bottom, 6)
+
+                Divider().opacity(0.3)
+
                 // 总览只展示 Top 8，避免面板溢出；完整列表在「模型」tab
                 ForEach(viewModel.topModels(8)) { usage in
                     modelBar(usage, maxTotal: maxTotal)
@@ -395,51 +456,162 @@ struct ContentView: View {
                 // 统一用柱状图渲染所有 range：日/周/上周/月/全部 都走同一套,
                 // 视觉对齐 + 切 range 时视线连续。柱子 > 14 根时只显示 selected 柱
                 // 的数字（避免 30+ 根柱子挤一起上方数字标签碰撞）。
+                //
+                // 生长动画：displayData 变化时（切 range / 刷新）柱高从旧值 spring
+                // 到新值；每根柱 .id(d.date) + transition 让新柱从底部淡入弹起。
                 let maxTokens = displayData.map(\.tokens).max() ?? 1
                 let n = displayData.count
                 let spacing: CGFloat = n > 20 ? 1.5 : (n > 10 ? 3 : 5)
                 let showAllTexts: Bool = n <= 14
                 HStack(alignment: .bottom, spacing: spacing) {
                     ForEach(Array(displayData.enumerated()), id: \.element.id) { idx, d in
-                        VStack(spacing: 2) {
-                            // 仅在样本较少（≤ 14）时给每根柱顶展示数字；
-                            // 样本 14-31 时只显示最高柱的数字避免拥挤
-                            if showAllTexts || d.tokens == maxTokens {
-                                Text(formatTokens(d.tokens))
-                                    .font(Theme.Typography.captionMonospaced)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.6)
-                            } else {
-                                // 占位透明 Text, 让全部柱子的布局对齐 (柱顶都从相同 baseline 起)
-                                Text("0")
-                                    .font(Theme.Typography.captionMonospaced)
-                                    .foregroundStyle(.clear)
-                                    .lineLimit(1)
-                            }
-                            RoundedRectangle(cornerRadius: Theme.Radius.bar, style: .continuous)
-                                .fill(Theme.chartBar)
-                                .frame(height: barHeight(d.tokens, max: maxTokens))
-                            // 日期标签: 太密时只标首尾 + 中点; ≤14 根都标
-                            if showAllTexts || idx == 0 || idx == n - 1 || (n > 3 && idx == n / 2) {
-                                Text(String(d.date.suffix(5)))
-                                    .font(Theme.Typography.caption)
-                                    .foregroundStyle(.tertiary)
-                            } else {
-                                Text("00/00")
-                                    .font(Theme.Typography.caption)
-                                    .foregroundStyle(.clear)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
+                        trendBar(
+                            d,
+                            maxTokens: maxTokens,
+                            isMax: d.tokens == maxTokens && maxTokens > 0,
+                            showAllTexts: showAllTexts,
+                            idx: idx,
+                            total: n
+                        )
                     }
                 }
                 .frame(height: 90)
+                .animation(.spring(response: 0.5, dampingFraction: 0.8), value: displayData)
             }
         }
         .padding(14)
         .background(Theme.cardBackground(for: colorScheme))
         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+    }
+
+    // MARK: - 今日时段分布（热力条）
+    //
+    // 24 小时（0-23）垂直小条，高度按该小时 token 占比，颜色从弱到强
+    // （brandFaint → brand 渐变热力感），直观看到一天哪时段最烧 token。
+    // 仅在 range == .today 且 hourly 非空时显示。
+
+    private var hourlyCard: some View {
+        let buckets = viewModel.hourly  // [HourlyBucket] hour 0-23
+        let maxTokens = buckets.map(\.tokens).max() ?? 1
+        let peakHour = buckets.max { $0.tokens < $1.tokens }?.hour
+        let nowHour = Calendar.current.component(.hour, from: Date())
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("今日时段分布")
+                    .font(Theme.Typography.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if let peak = peakHour {
+                    Text("峰值 \(peak):00 · \(formatTokens(buckets.max(by: { $0.tokens < $1.tokens })?.tokens ?? 0))")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(Theme.brand)
+                }
+            }
+
+            HStack(alignment: .bottom, spacing: 2) {
+                ForEach(0..<24, id: \.self) { hour in
+                    let tokens = buckets.first { $0.hour == hour }?.tokens ?? 0
+                    let ratio = maxTokens > 0 ? Double(tokens) / Double(maxTokens) : 0
+                    let isPeak = tokens > 0 && hour == peakHour
+                    let isNow = hour == nowHour
+                    // 热力色：弱 = brandFaint，强 = brand，峰值 = brand 全饱和 + 呼吸
+                    VStack(spacing: 1) {
+                        ZStack(alignment: .bottom) {
+                            RoundedRectangle(cornerRadius: 1.5)
+                                .fill(
+                                    tokens == 0
+                                        ? Color.primary.opacity(0.05)
+                                        : Theme.brand.opacity(0.25 + 0.75 * ratio)
+                                )
+                                .frame(width: 6, height: max(3, CGFloat(ratio) * 36))
+                                .animation(.spring(response: 0.4, dampingFraction: 0.75), value: buckets)
+                            // 峰值：顶上加个小亮点（TimelineView 驱动呼吸）
+                            if isPeak {
+                                TimelineView(.periodic(from: Date(), by: 0.2)) { ctx in
+                                    let phase = ctx.date.timeIntervalSince1970
+                                        .truncatingRemainder(dividingBy: 2.0) / 2.0
+                                    Circle()
+                                        .fill(Theme.brand)
+                                        .frame(width: 3, height: 3)
+                                        .offset(y: -max(3, CGFloat(ratio) * 36) / 2 - 4)
+                                        .opacity(0.4 + 0.6 * phase)
+                                }
+                            }
+                        }
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                        // 当前小时加个底部刻度点
+                        if isNow {
+                            Circle()
+                                .fill(Theme.brand.opacity(0.6))
+                                .frame(width: 3, height: 3)
+                        }
+                    }
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                }
+            }
+            .frame(height: 46, alignment: .bottom)
+
+            // 小时刻度
+            HStack(spacing: 2) {
+                Text("0")
+                Spacer()
+                Text("6")
+                Spacer()
+                Text("12")
+                Spacer()
+                Text("18")
+                Spacer()
+                Text("23")
+            }
+            .font(.system(size: 8, design: .monospaced))
+            .foregroundStyle(.tertiary)
+        }
+        .padding(14)
+        .background(Theme.cardBackground(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+    }
+
+    /// 单根趋势柱（顶数字 + 柱体 + 底部日期标签）。
+    /// 拆成独立函数避免 ForEach 闭包过重触发 Swift 类型检查超时。
+    private func trendBar(
+        _ d: DailyTotal,
+        maxTokens: Int,
+        isMax: Bool,
+        showAllTexts: Bool,
+        idx: Int,
+        total: Int
+    ) -> some View {
+        VStack(spacing: 2) {
+            if showAllTexts || isMax {
+                Text(formatTokens(d.tokens))
+                    .font(Theme.Typography.captionMonospaced)
+                    .foregroundStyle(isMax ? Theme.brand : Color.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+            } else {
+                Text("0")
+                    .font(Theme.Typography.captionMonospaced)
+                    .foregroundStyle(.clear)
+                    .lineLimit(1)
+            }
+            RoundedRectangle(cornerRadius: Theme.Radius.bar, style: .continuous)
+                .fill(isMax ? Theme.brandGradient : Theme.chartBar)
+                .frame(height: barHeight(d.tokens, max: maxTokens))
+            if showAllTexts || idx == 0 || idx == total - 1 || (total > 3 && idx == total / 2) {
+                Text(String(d.date.suffix(5)))
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(isMax ? Theme.brand.opacity(0.8) : Color.secondary.opacity(0.7))
+            } else {
+                Text("00/00")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(.clear)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .id(d.date)
+        .transition(.scale(scale: 0.2, anchor: .bottom).combined(with: .opacity))
+        .animation(.spring(response: 0.45, dampingFraction: 0.75), value: maxTokens)
     }
 
     private func barHeight(_ v: Int, max m: Int) -> CGFloat {
@@ -448,5 +620,50 @@ struct ContentView: View {
         // CollectingViewsWithInvalidBaselines 异常导致切源时崩溃）
         let ratio = max(0, min(Double(v) / Double(m), 1.0))
         return max(4, CGFloat(ratio) * 60)
+    }
+}
+
+// MARK: - Stagger Appear
+//
+// 卡片入场 stagger：切 tab 时每张卡按 index 错峰上浮淡入。
+// 依赖 ContentView 的 tab state 变化（withAnimation 包裹），
+// delay = index * 0.04s，形成逐个浮入的效果。
+
+private extension View {
+    /// 卡片入场 stagger：切 tab 时按 index 错峰上浮淡入
+    func staggerAppear(tab: ContentView.Tab, index: Int) -> some View {
+        modifier(StaggerAppear(tab: tab, index: index))
+    }
+}
+
+private struct StaggerAppear: ViewModifier {
+    let tab: ContentView.Tab
+    let index: Int
+
+    @State private var tabAppear = false
+
+    init(tab: ContentView.Tab, index: Int) {
+        self.tab = tab
+        self.index = index
+        // 每次 modifier 重建（tab 变化时 ContentView body 重建）都从隐藏态开始，
+        // 再在 onAppear/onChange 里动画进入 → 形成"逐个浮入"
+        _tabAppear = State(initialValue: false)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(tabAppear ? 1 : 0)
+            .offset(y: tabAppear ? 0 : 12)
+            .onAppear {
+                withAnimation(.easeOut(duration: 0.3).delay(Double(index) * 0.04)) {
+                    tabAppear = true
+                }
+            }
+            .onChange(of: tab) { _, _ in
+                tabAppear = false
+                withAnimation(.easeOut(duration: 0.3).delay(Double(index) * 0.04)) {
+                    tabAppear = true
+                }
+            }
     }
 }
