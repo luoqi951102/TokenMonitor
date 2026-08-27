@@ -691,7 +691,8 @@ private struct LargeContent: View {
             HStack(spacing: 6) {
                 Image(systemName: "chart.bar.xaxis")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Theme.brand)
+                    .foregroundStyle(Theme.brandGradient)
+                    .shadow(color: Theme.brand.opacity(0.6), radius: 3, x: 0, y: 0)
                 Text("Token Monitor")
                     .font(.system(size: 14, weight: .semibold))
                 Spacer()
@@ -760,37 +761,41 @@ private struct LargeContent: View {
 
             Divider().opacity(0.4)
 
-            // ===== 仪表盘区（4 个酷炫组件）=====
-            // 行 1：燃烧速率表盘 + 来源占比环
-            HStack(alignment: .top, spacing: 8) {
-                VelocityGauge(
-                    value: velocityValue,
-                    peak: velocityPeak,
-                    unit: viewModel.range == .today ? "/时" : "/天",
-                    caption: viewModel.range == .today ? "燃烧速率" : "日均消耗"
-                )
-                Spacer(minLength: 2)
-                SourceDonutCard(
+            // ===== 仪表盘区（统一卡片容器，整体感）=====
+            VStack(alignment: .leading, spacing: 12) {
+                // Hero 三层同心发光环（CC / ZC / 速率 融合在一个视觉锚点）
+                HeroRings(
                     claudeTokens: viewModel.models.filter { $0.source == "claude" }.reduce(0) { $0 + $1.totalTokens },
-                    zcodeTokens: viewModel.models.filter { $0.source == "zcode" }.reduce(0) { $0 + $1.totalTokens }
+                    zcodeTokens: viewModel.models.filter { $0.source == "zcode" }.reduce(0) { $0 + $1.totalTokens },
+                    velocity: velocityValue,
+                    velocityPeak: velocityPeak,
+                    velocityUnit: viewModel.range == .today ? "/时" : "/天"
                 )
+                .frame(maxWidth: .infinity)
+
+                // Token 构成四色分段条
+                if !viewModel.models.isEmpty {
+                    CompositionBar(models: viewModel.models)
+                }
+
+                // 今日时段热力条（仅今日档显示）
+                if viewModel.range == .today && !viewModel.hourly.isEmpty {
+                    HourlyHeatmapMini(buckets: viewModel.hourly)
+                }
             }
+            .padding(12)
+            .background(
+                // 统一卡片底：把 Hero + 构成 + 热力 三块视觉上框成一块
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.primary.opacity(0.04))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                    )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .padding(.horizontal, 16)
-            .padding(.top, 4)
-
-            // 行 2：Token 构成四色分段条
-            if !viewModel.models.isEmpty {
-                CompositionBar(models: viewModel.models)
-                    .padding(.horizontal, 16)
-            }
-
-            // 行 3：今日时段热力条（仅今日档显示）
-            if viewModel.range == .today && !viewModel.hourly.isEmpty {
-                HourlyHeatmapMini(buckets: viewModel.hourly)
-                    .padding(.horizontal, 16)
-            }
-
-            Divider().opacity(0.4)
+            .padding(.vertical, 2)
 
             // Mini Trend
             if !viewModel.daily.isEmpty {

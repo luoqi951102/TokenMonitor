@@ -2,20 +2,151 @@ import SwiftUI
 
 // MARK: - 浮窗仪表盘组件集
 //
-// 4 个酷炫仪表盘，供 FloatingWidgetView 的 large 档使用：
-//   1. VelocityGauge    — 燃烧速率半圆表盘（指针 + 渐变弧）
-//   2. SourceDonutCard  — CC vs ZC 来源占比环（复用 DonutChart）
-//   3. CompositionBar   — Token 构成四色分段条
-//   4. HourlyHeatmapMini— 今日 24 小时热力条（峰值呼吸点）
+// Hero 整体化设计（参考 Apple Fitness Activity Rings + 同色发光手法）：
+//   1. HeroRings         — 三层同心发光环（外=CC / 中=ZC / 内=速率）+ 中心大数字，
+//                          把多个指标融合成一个视觉锚点，解决"组件分散"问题
+//   2. CompositionBar    — Token 构成四色分段条
+//   3. HourlyHeatmapMini — 今日 24 小时热力条（峰值呼吸点）
+//   4. VelocityGauge / SourceDonutCard — 旧版独立组件保留备用
 //
 // 全部沿用 Theme 设计系统（brand 渐变 / token 语义色 / modelColor），
 // 数据从 DashboardViewModel 现有字段聚合，不需要新查询。
 
-// MARK: - 1. 燃烧速率表盘
+// MARK: - 1. Hero 多层同心发光环
 //
-// 半圆仪表：弧线从 9 点钟方向扫到 3 点钟方向，指针按 value/peak 比例偏转。
-// 中心显示当前速率值 + 单位（今日档 = 每 小时，其他档 = 每 天）。
-// 弧线用 brandGradient，指针 spring 旋转（数据变化时回弹）。
+// Apple Fitness 风格：三层同心环共用一个圆心，每环独立渐变色 + 圆头线帽 +
+// 同色柔光（.shadow 用环自己的颜色），把 CC/ZC/速率三个指标融合成一个
+// 视觉锚点。中心叠总 token 大数字 + 速率小字。
+//
+// 环语义（每环独立归一化，不是 100% 占比环）：
+//   外环 brand   — CC token / max(CC, ZC)
+//   中环 emerald — ZC token / max(CC, ZC)
+//   内环 amber   — 当前速率 / 峰值速率
+
+struct HeroRings: View {
+    let claudeTokens: Int
+    let zcodeTokens: Int
+    let velocity: Double       // 当前速率
+    let velocityPeak: Double   // 峰值速率
+    var velocityUnit: String = "/时"
+
+    private var ccFrac: Double {
+        let m = Double(max(claudeTokens, zcodeTokens))
+        return m > 0 ? Double(claudeTokens) / m : 0
+    }
+    private var zcFrac: Double {
+        let m = Double(max(claudeTokens, zcodeTokens))
+        return m > 0 ? Double(zcodeTokens) / m : 0
+    }
+    private var vFrac: Double {
+        velocityPeak > 0 ? min(velocity / velocityPeak, 1) : 0
+    }
+    private var total: Int { claudeTokens + zcodeTokens }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            // 环体
+            ZStack {
+                ringLayer(progress: ccFrac,
+                          diameter: 96, lineWidth: 9,
+                          color: Theme.brand, lightColor: Theme.brandLight)
+                ringLayer(progress: zcFrac,
+                          diameter: 74, lineWidth: 9,
+                          color: Theme.tokenCacheRead,
+                          lightColor: Theme.tokenCacheRead.opacity(0.6))
+                ringLayer(progress: vFrac,
+                          diameter: 54, lineWidth: 8,
+                          color: Theme.tokenCacheWrite,
+                          lightColor: Theme.tokenCacheWrite.opacity(0.6))
+                // 中心：总 token + 速率
+                VStack(spacing: 0) {
+                    Text(formatTokens(total))
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(.primary)
+                        .contentTransition(.numericText(value: Double(total)))
+                        .animation(.easeOut(duration: 0.3), value: total)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    Text(rateText)
+                        .font(.system(size: 8, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 100, height: 100)
+
+            // 右侧图例：三行（色点 + 名 + 值）
+            VStack(alignment: .leading, spacing: 7) {
+                legendRow(color: Theme.brand, name: "CC",
+                          value: formatTokens(claudeTokens), pct: pct(claudeTokens))
+                legendRow(color: Theme.tokenCacheRead, name: "ZC",
+                          value: formatTokens(zcodeTokens), pct: pct(zcodeTokens))
+                legendRow(color: Theme.tokenCacheWrite, name: "速率",
+                          value: rateText, pct: nil)
+            }
+        }
+    }
+
+    /// 单环：暗轨 + 渐变进度弧 + 同色柔光
+    private func ringLayer(progress: Double, diameter: CGFloat, lineWidth: CGFloat,
+                           color: Color, lightColor: Color) -> some View {
+        ZStack {
+            Circle()
+                .stroke(color.opacity(0.12), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+            Circle()
+                .trim(from: 0, to: max(0.003, progress))
+                .stroke(
+                    AngularGradient(
+                        colors: [color, lightColor, color],
+                        center: .center,
+                        startAngle: .degrees(-90),
+                        endAngle: .degrees(270)
+                    ),
+                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+                // 同色发光：用环自己的颜色做柔光，Fitness 环的关键质感
+                .shadow(color: color.opacity(0.55), radius: 3.5, x: 0, y: 0)
+                .animation(.spring(response: 0.7, dampingFraction: 0.75), value: progress)
+        }
+        .frame(width: diameter, height: diameter)
+    }
+
+    private var rateText: String {
+        let v = velocity
+        if v >= 1_000_000 { return String(format: "%.1fM", v / 1_000_000) + velocityUnit }
+        if v >= 1_000 { return String(format: "%.0fK", v / 1_000) + velocityUnit }
+        return String(format: "%.0f", v) + velocityUnit
+    }
+
+    private func pct(_ v: Int) -> String? {
+        guard total > 0, v > 0 else { return nil }
+        return "\(Int(Double(v) / Double(total) * 100))%"
+    }
+
+    private func legendRow(color: Color, name: String, value: String, pct: String?) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 5, height: 5)
+            Text(name)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.primary)
+            Spacer(minLength: 2)
+            VStack(alignment: .trailing, spacing: 0) {
+                Text(value)
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.primary)
+                if let pct {
+                    Text(pct)
+                        .font(.system(size: 7, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(width: 82)
+    }
+}
+
+// MARK: - 备用. 燃烧速率表盘（旧版独立组件，Hero 版已融合进 HeroRings）
 
 struct VelocityGauge: View {
     let value: Double          // 当前速率
@@ -102,7 +233,7 @@ struct VelocityGauge: View {
     }
 }
 
-// MARK: - 2. 来源占比环（CC vs ZC）
+// MARK: - 备用. 来源占比环（旧版独立组件）
 
 struct SourceDonutCard: View {
     let claudeTokens: Int
@@ -158,7 +289,7 @@ struct SourceDonutCard: View {
     }
 }
 
-// MARK: - 3. Token 构成分段条
+// MARK: - 2. Token 构成分段条
 //
 // 四色水平堆叠条：输入(indigo) / 缓存写(amber) / 缓存读(emerald) / 输出(pink)。
 // 从 models 聚合四类 token，一眼看出成本结构大头。
@@ -239,7 +370,7 @@ struct CompositionBar: View {
     }
 }
 
-// MARK: - 4. 今日时段热力条（mini 版）
+// MARK: - 3. 今日时段热力条（mini 版）
 //
 // 主面板 hourlyCard 的浮窗缩小版：24 根热力条 + 峰值呼吸点 + 当前小时刻度。
 
