@@ -336,6 +336,7 @@ let ProviderUUIDMap: [String: String] = [
     "7aff2f39-217e-4f1c-82f6-b8e857a9be22": "浙算 MaaS",
     "e42dedab-efa4-4e63-9de5-8138073a2383": "词元之芯·Token工厂",
     "f2b1acc3-7c19-4a25-a6b5-f9783a0d91f9": "火山引擎",
+    "2e1257a7-08b6-4bee-87ff-58d3c7306bd0": "DeepSeek 原厂",
 ]
 
 /// baseURL → 友好名映射表。
