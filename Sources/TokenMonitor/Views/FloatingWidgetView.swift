@@ -794,6 +794,8 @@ private struct LargeContent: View {
                     )
             )
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            // 轻微浮动：整卡 ±1.5pt 8s 正弦上下漂（跟 Hero 呼吸不同频，叠加更自然）
+            .modifier(GentleFloat(amplitude: 1.5, period: 8.0))
             .padding(.horizontal, 16)
             .padding(.vertical, 2)
 
@@ -979,6 +981,24 @@ private func sourceLabel(_ s: String) -> String {
     case "claude": return "Claude"
     case "zcode": return "ZCode"
     default: return s
+    }
+}
+
+// MARK: - Gentle Float（轻微上下浮动）
+//
+// 仪表盘卡片的 idle 漂浮感：TimelineView 20fps 驱动正弦 y 偏移，
+// 幅度默认 ±1.5pt / 8s 周期，与 Hero 环的 4s 呼吸不同频叠加更自然。
+
+struct GentleFloat: ViewModifier {
+    var amplitude: CGFloat = 1.5
+    var period: Double = 8.0
+
+    func body(content: Content) -> some View {
+        TimelineView(.periodic(from: .now, by: 0.05)) { ctx in
+            let t = ctx.date.timeIntervalSinceReferenceDate
+            let y = amplitude * CGFloat(sin(2 * .pi * t / period))
+            content.offset(y: y)
+        }
     }
 }
 

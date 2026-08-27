@@ -44,20 +44,35 @@ struct HeroRings: View {
     private var total: Int { claudeTokens + zcodeTokens }
 
     var body: some View {
+        // 呼吸驱动：20fps TimelineView 算正弦相位，可见时常驻但计算极轻（几个 sin）
+        //   breath    = sin(2π·t/4s)  → 光晕强弱 + 整体 1.2% scale 脉动
+        //   flowDeg   = t/20s · 360°   → 渐变流光缓慢旋转（颜色绕环流动）
+        TimelineView(.periodic(from: .now, by: 0.05)) { ctx in
+            let t = ctx.date.timeIntervalSinceReferenceDate
+            let breath = sin(2 * .pi * t / 4.0)
+            let flowDeg = t.truncatingRemainder(dividingBy: 20.0) / 20.0 * 360.0
+            ringsBody(breath: breath, flowDeg: flowDeg)
+        }
+    }
+
+    private func ringsBody(breath: Double, flowDeg: Double) -> some View {
         HStack(spacing: 14) {
-            // 环体
+            // 环体（整组轻微呼吸缩放）
             ZStack {
                 ringLayer(progress: ccFrac,
                           diameter: 96, lineWidth: 9,
-                          color: Theme.brand, lightColor: Theme.brandLight)
+                          color: Theme.brand, lightColor: Theme.brandLight,
+                          breath: breath, flowDeg: flowDeg)
                 ringLayer(progress: zcFrac,
                           diameter: 74, lineWidth: 9,
                           color: Theme.tokenCacheRead,
-                          lightColor: Theme.tokenCacheRead.opacity(0.6))
+                          lightColor: Theme.tokenCacheRead.opacity(0.6),
+                          breath: breath, flowDeg: flowDeg)
                 ringLayer(progress: vFrac,
                           diameter: 54, lineWidth: 8,
                           color: Theme.tokenCacheWrite,
-                          lightColor: Theme.tokenCacheWrite.opacity(0.6))
+                          lightColor: Theme.tokenCacheWrite.opacity(0.6),
+                          breath: breath, flowDeg: flowDeg)
                 // 中心：总 token + 速率
                 VStack(spacing: 0) {
                     Text(formatTokens(total))
@@ -74,6 +89,8 @@ struct HeroRings: View {
                 }
             }
             .frame(width: 100, height: 100)
+            // 呼吸缩放：±1.2% 跟光晕同相位，非常轻微
+            .scaleEffect(1.0 + 0.012 * breath)
 
             // 右侧图例：三行（色点 + 名 + 值）
             VStack(alignment: .leading, spacing: 7) {
@@ -87,9 +104,10 @@ struct HeroRings: View {
         }
     }
 
-    /// 单环：暗轨 + 渐变进度弧 + 同色柔光
+    /// 单环：暗轨 + 渐变进度弧 + 同色柔光（光晕随 breath 脉动，渐变随 flowDeg 流光旋转）
     private func ringLayer(progress: Double, diameter: CGFloat, lineWidth: CGFloat,
-                           color: Color, lightColor: Color) -> some View {
+                           color: Color, lightColor: Color,
+                           breath: Double, flowDeg: Double) -> some View {
         ZStack {
             Circle()
                 .stroke(color.opacity(0.12), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
@@ -99,14 +117,15 @@ struct HeroRings: View {
                     AngularGradient(
                         colors: [color, lightColor, color],
                         center: .center,
-                        startAngle: .degrees(-90),
-                        endAngle: .degrees(270)
+                        startAngle: .degrees(-90 + flowDeg),
+                        endAngle: .degrees(270 + flowDeg)
                     ),
                     style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                // 同色发光：用环自己的颜色做柔光，Fitness 环的关键质感
-                .shadow(color: color.opacity(0.55), radius: 3.5, x: 0, y: 0)
+                // 同色发光：亮度随呼吸相位脉动（0.35 ↔ 0.7），环"活"的关键
+                .shadow(color: color.opacity(0.35 + 0.35 * (0.5 + 0.5 * breath)),
+                        radius: 3.0 + 1.5 * (0.5 + 0.5 * breath), x: 0, y: 0)
                 .animation(.spring(response: 0.7, dampingFraction: 0.75), value: progress)
         }
         .frame(width: diameter, height: diameter)
