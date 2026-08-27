@@ -760,6 +760,38 @@ private struct LargeContent: View {
 
             Divider().opacity(0.4)
 
+            // ===== 仪表盘区（4 个酷炫组件）=====
+            // 行 1：燃烧速率表盘 + 来源占比环
+            HStack(alignment: .top, spacing: 8) {
+                VelocityGauge(
+                    value: velocityValue,
+                    peak: velocityPeak,
+                    unit: viewModel.range == .today ? "/时" : "/天",
+                    caption: viewModel.range == .today ? "燃烧速率" : "日均消耗"
+                )
+                Spacer(minLength: 2)
+                SourceDonutCard(
+                    claudeTokens: viewModel.models.filter { $0.source == "claude" }.reduce(0) { $0 + $1.totalTokens },
+                    zcodeTokens: viewModel.models.filter { $0.source == "zcode" }.reduce(0) { $0 + $1.totalTokens }
+                )
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 4)
+
+            // 行 2：Token 构成四色分段条
+            if !viewModel.models.isEmpty {
+                CompositionBar(models: viewModel.models)
+                    .padding(.horizontal, 16)
+            }
+
+            // 行 3：今日时段热力条（仅今日档显示）
+            if viewModel.range == .today && !viewModel.hourly.isEmpty {
+                HourlyHeatmapMini(buckets: viewModel.hourly)
+                    .padding(.horizontal, 16)
+            }
+
+            Divider().opacity(0.4)
+
             // Mini Trend
             if !viewModel.daily.isEmpty {
                 miniTrend
@@ -773,7 +805,7 @@ private struct LargeContent: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
                 let maxTotal = viewModel.models.first?.totalTokens ?? 1
-                ForEach(viewModel.topModels(8)) { usage in
+                ForEach(viewModel.topModels(5)) { usage in
                     let providerName = providerDisplayName(usage.provider, model: usage.model)
                     HStack(spacing: 6) {
                         Circle()
@@ -858,6 +890,35 @@ private struct LargeContent: View {
 
             Spacer(minLength: 0)
         }
+    }
+
+    // MARK: - 燃烧速率计算
+    //
+    // 今日档：value = 今日 token ÷ 已过小时数（当前小时 + 分钟比例，至少 1 避免除 0），
+    //         peak = 今日峰值小时的 token（指针打到最右 = 追平历史峰值速度）。
+    // 其他档：value = 区间 token ÷ 区间天数（日均），peak = 区间内单日最大。
+
+    private var hoursElapsedToday: Double {
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: Date())
+        return max(1, Double(comps.hour ?? 1) + Double(comps.minute ?? 0) / 60.0)
+    }
+
+    private var velocityValue: Double {
+        if viewModel.range == .today {
+            return Double(viewModel.totalTokens) / hoursElapsedToday
+        }
+        let days = max(1, viewModel.daily.count)
+        return Double(viewModel.totalTokens) / Double(days)
+    }
+
+    private var velocityPeak: Double {
+        if viewModel.range == .today {
+            let peakHourly = viewModel.hourly.map(\.tokens).max() ?? 0
+            // 峰值小时 token 就是"满速"，保证指针通常在中间偏左（当前均值 < 峰值）
+            return Double(max(peakHourly, 1))
+        }
+        let peakDaily = viewModel.daily.map(\.tokens).max() ?? 1
+        return Double(max(peakDaily, 1))
     }
 
     private var miniTrend: some View {
