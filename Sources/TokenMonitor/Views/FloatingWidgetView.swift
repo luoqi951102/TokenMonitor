@@ -110,7 +110,9 @@ private struct RangeSwitcher: View {
                     Text(r.displayName)
                         .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
                         .foregroundStyle(isSelected ? Color.white : .secondary)
-                        .padding(.horizontal, 8)
+                        .lineLimit(1)
+                        .fixedSize()      // 禁止截断成 "..."
+                        .padding(.horizontal, 6)
                         .padding(.vertical, 3)
                         .background(
                             ZStack {
@@ -143,7 +145,7 @@ private struct SourceSwitcher: View {
     @Namespace private var ns
 
     private let options: [(value: String, label: String)] = [
-        ("all", "全部"), ("claude", "Claude"), ("zcode", "ZCode")
+        ("all", "全部"), ("claude", "CC"), ("zcode", "ZC")
     ]
 
     var body: some View {
@@ -158,7 +160,9 @@ private struct SourceSwitcher: View {
                     Text(opt.label)
                         .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
                         .foregroundStyle(isSelected ? Color.white : .secondary)
-                        .padding(.horizontal, 7)
+                        .lineLimit(1)
+                        .fixedSize()      // 禁止截断
+                        .padding(.horizontal, 6)
                         .padding(.vertical, 3)
                         .background(
                             Group {
