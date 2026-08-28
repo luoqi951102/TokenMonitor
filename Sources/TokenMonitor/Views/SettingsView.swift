@@ -5,6 +5,18 @@ import AppKit
 
 struct SettingsView: View {
     @ObservedObject var viewModel: DashboardViewModel
+    @Environment(\.colorScheme) private var colorScheme
+
+    // 历史修复卡片状态：三命令各自的 dry-run 结果 + 执行中状态
+    @State private var dedupeReport: Backfiller.DedupeReport?
+    @State private var backfillReport: BackfillReport?
+    @State private var reconcileReport: Backfiller.ReconcileReport?
+    @State private var isRunningFix = false
+    @State private var fixError: String?
+    // dry-run vs 实际执行模式切换（每命令独立）
+    @State private var dedupeExecuted = false
+    @State private var backfillExecuted = false
+    @State private var reconcileExecuted = false
 
     var body: some View {
         ScrollView {
@@ -13,13 +25,15 @@ struct SettingsView: View {
                 syncSection
                 loginItemSection
                 databaseSection
+                historyFixSection
                 defaultsSection
+                diagnosticSection
                 aboutSection
             }
             .padding(20)
         }
         .background(Theme.windowBackground(for: .dark))
-        .frame(width: 420, height: 520)
+        .frame(width: 420, height: 660)
     }
 
     private var header: some View {
@@ -58,6 +72,27 @@ struct SettingsView: View {
                     Spacer()
                 }
 
+                // 同步错误显示 — 让 lastError 不再被吞噬, 直接红字给出
+                if let err = viewModel.syncRunner.lastError {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                            .font(.caption)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("同步失败")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.red)
+                            Text(err)
+                                .font(.caption2)
+                                .foregroundStyle(.red.opacity(0.8))
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(8)
+                    .background(Color.red.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+
                 Divider().opacity(0.3)
 
                 HStack {
@@ -65,6 +100,7 @@ struct SettingsView: View {
                         .font(.caption.weight(.medium))
                     Spacer()
                     Picker("", selection: $viewModel.syncRunner.intervalMinutes) {
+                        Text("1 分钟").tag(1)
                         Text("5 分钟").tag(5)
                         Text("10 分钟").tag(10)
                         Text("30 分钟").tag(30)
@@ -110,13 +146,15 @@ struct SettingsView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
-                // ccusage.db
+                // .claude 目录授权（ccusage.db + 它的 -wal/-shm 副文件都在这里）
+                // 注意：sandbox 下 SQLite 要写 -wal 副文件，单文件 bookmark 不允许创建副文件，
+                // 所以授权整个 .claude 目录而不是 ccusage.db 单文件
                 bookmarkRow(
-                    label: "ccusage.db",
-                    recommendedPath: UsageDBPath.ccusageDefault,
+                    label: ".claude 目录",
+                    recommendedPath: NSHomeDirectory() + "/.claude",
                     key: .ccusageDB,
-                    prompt: "选择 ccusage.db",
-                    allowedTypes: ["sqlite", "db"]
+                    prompt: "选择 .claude 目录",
+                    allowedTypes: nil
                 )
 
                 // ZCode db
@@ -128,6 +166,29 @@ struct SettingsView: View {
                     allowedTypes: ["sqlite", "db"]
                 )
 
+                Divider().opacity(0.3)
+                Text("Swift 端自同步需要以下额外授权（目录扫描 + 配置读取）")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                // Claude projects 目录（Swift sync 扫 JSONL 必需）
+                bookmarkRow(
+                    label: "Claude projects 目录",
+                    recommendedPath: NSHomeDirectory() + "/.claude/projects",
+                    key: .claudeProjectsDir,
+                    prompt: "选择 projects 目录",
+                    allowedTypes: nil
+                )
+
+                // Claude settings.json（读 baseURL 打标用）
+                bookmarkRow(
+                    label: "Claude settings.json",
+                    recommendedPath: NSHomeDirectory() + "/.claude/settings.json",
+                    key: .claudeSettings,
+                    prompt: "选择 settings.json",
+                    allowedTypes: ["json"]
+                )
+
                 if let start = viewModel.dataSpan.start, let end = viewModel.dataSpan.end {
                     Divider().opacity(0.3)
                     row(label: "数据范围", value: "\(start) ~ \(end)")
@@ -137,11 +198,199 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - History Fix（三运维命令 Swift 化）
+
+    @ViewBuilder
+    private var historyFixSection: some View {
+        card(title: "历史数据修复", icon: "wrench.and.screwdriver") {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("对历史数据做一次性修复。先 dry-run 预览影响，确认无误后再实际执行。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                // 1) 去重
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("① 去掉 Claude 重复行").font(.caption.weight(.medium))
+                        Spacer()
+                        Button("dry-run") { runDedupe(dryRun: true) }
+                            .buttonStyle(.bordered).controlSize(.small).font(.caption)
+                            .disabled(isRunningFix)
+                        if dedupeReport != nil, !dedupeExecuted {
+                            Button("执行") { runDedupe(dryRun: false); dedupeExecuted = true }
+                                .buttonStyle(.borderedProminent).controlSize(.small).font(.caption)
+                                .tint(Theme.brand).disabled(isRunningFix)
+                        }
+                    }
+                    if let r = dedupeReport {
+                        Text(dedupeSummary(r))
+                            .font(.caption2).foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+
+                // 2) backfill provider
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("② msgid 指纹回填空 provider").font(.caption.weight(.medium))
+                        Spacer()
+                        Button("dry-run") { runBackfill(dryRun: true) }
+                            .buttonStyle(.bordered).controlSize(.small).font(.caption)
+                            .disabled(isRunningFix)
+                        if backfillReport != nil, !backfillExecuted {
+                            Button("执行") { runBackfill(dryRun: false); backfillExecuted = true }
+                                .buttonStyle(.borderedProminent).controlSize(.small).font(.caption)
+                                .tint(Theme.brand).disabled(isRunningFix)
+                        }
+                    }
+                    if let r = backfillReport {
+                        Text(backfillSummary(r))
+                            .font(.caption2).foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+
+                // 3) reconcile
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("③ 双信号源对账（msgid + 路由窗）").font(.caption.weight(.medium))
+                        Spacer()
+                        Button("dry-run") { runReconcile(dryRun: true) }
+                            .buttonStyle(.bordered).controlSize(.small).font(.caption)
+                            .disabled(isRunningFix)
+                        if reconcileReport != nil, !reconcileExecuted {
+                            Button("执行") { runReconcile(dryRun: false); reconcileExecuted = true }
+                                .buttonStyle(.borderedProminent).controlSize(.small).font(.caption)
+                                .tint(Theme.brand).disabled(isRunningFix)
+                        }
+                    }
+                    if let r = reconcileReport {
+                        Text(reconcileSummary(r))
+                            .font(.caption2).foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+
+                if isRunningFix {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("扫描中…").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if let err = fixError {
+                    Text("⚠️ \(err)").font(.caption).foregroundStyle(.red)
+                }
+                Text("注：provider 字段只对历史空行回填，已带标签的不动；路由窗时间戳来自 VSCode 扩展日志 + settings.json mtime。")
+                    .font(.caption2).foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    private func dedupeSummary(_ r: Backfiller.DedupeReport) -> String {
+        let dupDesc = r.dupGroupsByCount.filter { $0.n > 1 }
+            .map { "n=\($0.n)×\($0.groups)" }.joined(separator: " ")
+        let tokenB = Double(r.beforeTotalTokens) / 1e9
+        let tokenA = Double(r.afterTotalTokens) / 1e9
+        if r.deletedRows == 0 {
+            return "✓ 无重复行（\(r.beforeRows) 行全部唯一）。无需操作"
+        }
+        return "重复分布: \(dupDesc) | 待删 \(r.deletedRows) 行 | "
+            + "token \(tokenB)B → \(tokenA)B"
+            + (r.dryRun ? " 〔dry-run〕" : " 〔已执行〕")
+    }
+
+    private func backfillSummary(_ r: BackfillReport) -> String {
+        if r.matched == 0 {
+            return "✓ 无可回填（JSONL 未扫到 msgid 命中）"
+        }
+        let topMatch = r.writeDist.prefix(3)
+            .map { "\($0.model)→\($0.url) ×\($0.count)" }.joined(separator: " | ")
+        return "扫描 \(r.scanned) | 命中 \(r.matched) | 未匹配 \(r.unmatched)"
+            + (r.dryRun ? " 〔dry-run〕" : " | 已回填 \(r.updated) 行")
+            + "\n分布: \(topMatch)"
+    }
+
+    private func reconcileSummary(_ r: Backfiller.ReconcileReport) -> String {
+        return "路由窗 \(r.routeWindows.count) 个 | scanned \(r.scanned)\n"
+            + "verified \(r.verified) · msgid_only \(r.msgidOnly) · route_only \(r.routeOnly)\n"
+            + "conflict \(r.conflict) (prefer=\(r.prefer.rawValue) 写 \(r.conflictWritten)) · unmatched \(r.unmatched)"
+            + (r.dryRun ? " 〔dry-run〕" : " | 已更新 \(r.updated) 行")
+    }
+
+    // MARK: - History Fix Actions
+
+    private func runDedupe(dryRun: Bool) {
+        guard let db = openWritableDB() else { return }
+        isRunningFix = true
+        // dedupe 不需要扫 JSONL，直接同步执行（SQLite 查询很快）
+        let r = Backfiller.dedupeClaudeRows(db: db, dryRun: dryRun)
+        withAnimation(.easeOut(duration: 0.2)) { dedupeReport = r }
+        isRunningFix = false
+        if !dryRun { viewModel.openDB(); viewModel.refresh() }
+    }
+
+    private func runBackfill(dryRun: Bool) {
+        guard let (db, projectsURL) = openWritableDBAndProjects() else { return }
+        isRunningFix = true
+        // 扫 JSONL 在后台，避免阻塞 UI
+        Task {
+            // 在后台线程跑扫描 + 写入
+            let r = await Task.detached(priority: .utility) { () -> BackfillReport in
+                defer { BookmarkStore.shared.release(projectsURL) }
+                return Backfiller.backfillProvider(
+                    db: db, projectsDirURL: projectsURL, dryRun: dryRun
+                )
+            }.value
+            await MainActor.run {
+                withAnimation(.easeOut(duration: 0.2)) { backfillReport = r }
+                isRunningFix = false
+                if !dryRun { viewModel.openDB(); viewModel.refresh() }
+            }
+        }
+    }
+
+    private func runReconcile(dryRun: Bool) {
+        guard let (db, projectsURL) = openWritableDBAndProjects() else { return }
+        isRunningFix = true
+        Task {
+            let r = await Task.detached(priority: .utility) { () -> Backfiller.ReconcileReport in
+                defer { BookmarkStore.shared.release(projectsURL) }
+                return Backfiller.reconcileProviders(
+                    db: db, projectsDirURL: projectsURL, dryRun: dryRun
+                )
+            }.value
+            await MainActor.run {
+                withAnimation(.easeOut(duration: 0.2)) { reconcileReport = r }
+                isRunningFix = false
+                if !dryRun { viewModel.openDB(); viewModel.refresh() }
+            }
+        }
+    }
+
+    /// 打开可写 ccusage.db。失败时设 fixError 并返回 nil。
+    private func openWritableDB() -> CCUsageDB? {
+        guard let db = CCUsageDB(path: UsageDBPath.ccusageDefault) else {
+            fixError = "无法打开 ccusage.db（请先在上方授权）"
+            return nil
+        }
+        return db
+    }
+
+    /// 打开可写 db + 解开 projects 目录的 security-scoped URL（同步方负责用完 release）。
+    /// 成功返回 (db, url)。db 在闭包内用、url 需调用方 release。
+    private func openWritableDBAndProjects() -> (CCUsageDB, URL)? {
+        guard let db = openWritableDB() else { return nil }
+        guard let projectsURL = BookmarkStore.shared.resolve(.claudeProjectsDir) else {
+            fixError = "Claude projects 目录未授权（请在上方授权后重试）"
+            return nil
+        }
+        return (db, projectsURL)
+    }
+
     /// 单行 bookmark 授权控件
     private func bookmarkRow(
         label: String,
-        recommendedPath: String,
-        key: BookmarkStore.Key,
+        recommendedPath: String,        key: BookmarkStore.Key,
         prompt: String,
         allowedTypes: [String]?
     ) -> some View {
@@ -193,10 +442,16 @@ struct SettingsView: View {
         panel.title = prompt
         panel.prompt = "授权"
         panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        if let types = allowedTypes {
-            panel.allowedFileTypes = types
+        // 目录授权：ccusageDB（.claude 目录，要写 -wal/-shm）和 claudeProjectsDir
+        if key == .claudeProjectsDir || key == .ccusageDB {
+            panel.canChooseDirectories = true
+            panel.canChooseFiles = false
+        } else {
+            panel.canChooseDirectories = false
+            panel.canChooseFiles = true
+            if let types = allowedTypes {
+                panel.allowedFileTypes = types
+            }
         }
         // 默认打开推荐目录
         let home = NSHomeDirectory()
@@ -205,6 +460,8 @@ struct SettingsView: View {
         case .ccusageDB: defaultPath = "\(home)/.claude"
         case .zcodeDB: defaultPath = "\(home)/.zcode/cli/db"
         case .ccUsageExe: defaultPath = "\(home)/.local/bin"
+        case .claudeProjectsDir: defaultPath = "\(home)/.claude/projects"
+        case .claudeSettings: defaultPath = "\(home)/.claude"
         }
         panel.directoryURL = URL(fileURLWithPath: defaultPath)
 
@@ -219,9 +476,11 @@ struct SettingsView: View {
     }
 
     private func revealDB() {
-        if let url = BookmarkStore.shared.resolve(.ccusageDB) {
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-            BookmarkStore.shared.release(url)
+        if let dirURL = BookmarkStore.shared.resolve(.ccusageDB) {
+            // bookmark 解出 .claude 目录，选中 ccusage.db 文件
+            let dbURL = dirURL.appendingPathComponent("ccusage.db")
+            NSWorkspace.shared.activateFileViewerSelecting([dbURL])
+            BookmarkStore.shared.release(dirURL)
         } else {
             let url = URL(fileURLWithPath: UsageDBPath.ccusageDefault)
             NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -300,6 +559,52 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - 诊断
+
+    @ViewBuilder
+    private var diagnosticSection: some View {
+        card(title: "诊断", icon: "stethoscope") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("当数据全部显示为 0 时，请运行一次同步后复制下方诊断内容给开发者。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    Button("立即同步") {
+                        Task { await viewModel.manualSync() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.brand)
+
+                    Button("清空日志") {
+                        DiagnosticLogger.clear()
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button("复制") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(DiagnosticLogger.summary(), forType: .string)
+                    }
+                    .buttonStyle(.bordered)
+
+                    Spacer()
+                }
+
+                ScrollView {
+                    Text(DiagnosticLogger.summary())
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                }
+                .frame(maxHeight: 180)
+                .padding(8)
+                .background(Color.black.opacity(0.3))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+        }
+    }
+
     // MARK: - About
 
     @ViewBuilder
@@ -326,14 +631,14 @@ struct SettingsView: View {
                 Image(systemName: icon)
                     .foregroundStyle(Theme.brand)
                 Text(title)
-                    .font(.headline)
+                    .font(Theme.Typography.title)
                 Spacer()
             }
             content()
         }
         .padding(14)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(Theme.cardBackground(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 
     private func row(label: String, value: String) -> some View {

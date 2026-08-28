@@ -9,8 +9,8 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "2"
     DEVELOPMENT_TEAM: "N5YV5FV235"
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "5.9"
@@ -41,6 +41,9 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSUIElement: true
         NSHighResolutionCapable: true
+        # App 图标：用 Assets.xcassets/AppIcon.appiconset 编译出的 AppIcon.icns
+        CFBundleIconFile: AppIcon
+        CFBundleIconName: AppIcon
         CFBundleURLTypes:
           - CFBundleURLName: com.luoqi.tokenmonitor
             CFBundleURLSchemes:
@@ -48,9 +51,13 @@ targets:
     entitlements:
       path: TokenMonitor.entitlements
       properties:
-        com.apple.security.app-sandbox: true
-        com.apple.security.files.bookmarks.app: true
-        com.apple.security.files.user-selected.read-only: true
+        # ad-hoc 签名下 sandbox=true 会导致 security-scoped bookmark 创建失败
+        # (Code 256 "Failed to retrieve app-scope key")，因为 keychain 需要
+        # 稳定的 Team ID 才能存 app-scope key。禁用 sandbox 后 App 直接访问
+        # ~/.claude 和 ~/.zcode，无需 bookmark 机制。
+        com.apple.security.app-sandbox: false
+        # application-groups 保留给 Widget Extension IPC 用（sandbox=false 下
+        # App Group 仍可用，只是不再是 sandbox 强制要求）
         com.apple.security.application-groups:
           - N5YV5FV235.group.com.luoqi.tokenmonitor
     settings:

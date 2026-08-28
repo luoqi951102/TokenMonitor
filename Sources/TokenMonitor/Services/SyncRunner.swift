@@ -1,6 +1,15 @@
 import Foundation
 import AppKit
 
+// MARK: - Sandbox detection helper
+//
+// Bundle.main 没有原生 isSandboxed 属性。检测 sandbox 最可靠的方式是看 home
+// 路径是否含 "/Library/Containers/" -- sandbox app 的 NSHomeDirectory() 返回
+// ~/Library/Containers/<bundle-id>/Data, 非 sandbox 返回真实 ~.
+private let isAppSandboxed: Bool = {
+    NSHomeDirectory().contains("/Library/Containers/")
+}()
+
 // MARK: - SyncRunner
 //
 // 异步调用 `cc-usage sync`，让 token-count 把 Claude JSONL + ZCode SQLite 增量同步到
@@ -24,6 +33,9 @@ final class SyncRunner: ObservableObject {
     @Published private(set) var lastError: String?
     @Published private(set) var isAvailable: Bool = false
 
+    /// 最近一次 Swift sync 的统计（claude + zcode 两段），UI 展示用。
+    @Published private(set) var lastStats: SyncReport?
+
     /// 用户在设置里配置的 cc-usage 路径（空则用自动探测的）
     @Published var ccUsageOverride: String = UserDefaults.standard.string(forKey: "cc_usage_path") ?? "" {
         didSet {
@@ -32,8 +44,8 @@ final class SyncRunner: ObservableObject {
         }
     }
 
-    /// 自动刷新间隔（分钟）
-    @Published var intervalMinutes: Int = UserDefaults.standard.object(forKey: "sync_interval_minutes") as? Int ?? 5 {
+    /// 自动刷新间隔（分钟）。默认 1 分钟 — 为了让浮窗/面板的实时性接近在线监控
+    @Published var intervalMinutes: Int = UserDefaults.standard.object(forKey: "sync_interval_minutes") as? Int ?? 1 {
         didSet {
             UserDefaults.standard.set(intervalMinutes, forKey: "sync_interval_minutes")
             restartTimer()
@@ -87,21 +99,104 @@ final class SyncRunner: ObservableObject {
 
     // MARK: - Sync
     //
-    // sandbox=true 下无法 spawn 外部 binary（Apple 限制）。
-    // 策略：syncNow 不实际跑 cc-usage，而是标记需要用户在终端手动跑。
-    // SettingsView 提供"在终端打开"按钮，用户在 Terminal 里执行 `cc-usage sync`。
-    // 也可选装 docs/com.luoqi.ccusage-sync.plist 用 launchd 系统级定时同步。
+    // Swift sync 私有化接管逻辑：
+    //   - 若三个授权齐全（projects 目录 / ZCode DB / ccusage DB），syncNow 走 runSwiftSync() 真同步
+    //   - 否则维持旧的"假同步真刷新" fallback（数据由用户在终端跑 cc-usage sync 或 launchd 产出）
+    //
+    // runSwiftSync 全程长持有 projects 目录 + zcode DB 的 security-scoped URL，
+    // 整轮 sync 完才 release——不在循环里高频 resolve/release（避免重蹈 W2 工具调用显示 0 的 bug）。
 
     func syncNow() async {
         guard !isSyncing else { return }
-        // sandbox 下：只是触发 refresh（实际 sync 由用户在 App 外执行）
         isSyncing = true
         lastError = nil
-        // 短暂等待，给用户视觉反馈
-        try? await Task.sleep(nanoseconds: 300_000_000)
-        lastSyncAt = Date()
+        // sandbox=false 下不需要 bookmark, 直接走真同步。
+        // sandbox=true 下需要 allGranted (3 个 bookmark 都已授权) 才走真同步。
+        let canSync = !isAppSandboxed || SandboxAuthorizer.allGranted
+        DiagnosticLogger.log("syncNow begin, sandboxed=\(isAppSandboxed) allGranted=\(SandboxAuthorizer.allGranted) canSync=\(canSync)")
+
+        if canSync {
+            // 真同步路径
+            do {
+                lastStats = try await runSwiftSync()
+                lastSyncAt = Date()
+                let r = lastStats
+                DiagnosticLogger.log("syncNow 成功 - claude.scanned=\(r?.claude.scanned ?? 0) records=\(r?.claude.records ?? 0) zcode.new=\(r?.zcode.new ?? 0) skip=\(r?.zcode.skipped ?? 0)")
+            } catch {
+                lastError = "Swift 同步失败：\(error.localizedDescription)"
+                DiagnosticLogger.log("syncNow 抛错: \(error.localizedDescription)")
+            }
+        } else {
+            // fallback：sandbox 下未授权，只做视觉反馈
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            lastSyncAt = Date()
+            DiagnosticLogger.log("syncNow fallback (allGranted=false) - 跳过真同步")
+        }
+
         isSyncing = false
         refreshAvailability()
+    }
+
+    /// Swift 端真同步：Claude JSONL 扫描 + ZCode 增量水位线，全写进 ccusage.db。
+    /// 整轮 sync 期间长持有 security-scoped URL，sync 完才 release。
+    /// 必须在后台跑（IO 密集），调用方负责切线程。
+    nonisolated func runSwiftSync() async throws -> SyncReport {
+        DiagnosticLogger.log("runSwiftSync begin")
+        let isSandboxed = isAppSandboxed
+
+        // 1. 解出三个路径 (sandbox 下走 bookmark, 非 sandbox 下直接用 NSHomeDirectory)
+        let projectsURL: URL
+        let zcodeURL: URL
+        var projectsScopeURL: URL? = nil  // 仅 sandbox 下持有
+        var zcodeScopeURL: URL? = nil
+
+        if isSandboxed {
+            // sandbox=true: 必须走 security-scoped bookmark
+            guard let pURL = BookmarkStore.shared.resolve(.claudeProjectsDir) else {
+                DiagnosticLogger.log("resolve(.claudeProjectsDir) 失败")
+                throw SyncError.notAuthorized("Claude projects 目录未授权")
+            }
+            projectsScopeURL = pURL
+            projectsURL = pURL
+
+            guard let zURL = BookmarkStore.shared.resolve(.zcodeDB) else {
+                DiagnosticLogger.log("resolve(.zcodeDB) 失败")
+                throw SyncError.notAuthorized("ZCode 数据库未授权")
+            }
+            zcodeScopeURL = zURL
+            zcodeURL = zURL
+        } else {
+            // sandbox=false: 直接用 NSHomeDirectory() 真实路径, 不需要 bookmark
+            projectsURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude/projects")
+            zcodeURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".zcode/cli/db/db.sqlite")
+            DiagnosticLogger.log("非 sandbox 模式, 直接用路径: projects=\(projectsURL.path) zcode=\(zcodeURL.path)")
+        }
+        defer {
+            if let p = projectsScopeURL { BookmarkStore.shared.release(p) }
+            if let z = zcodeScopeURL { BookmarkStore.shared.release(z) }
+        }
+
+        // 2. 打开可写 ccusage.db 句柄
+        guard let db = CCUsageDB(path: UsageDBPath.ccusageDefault) else {
+            DiagnosticLogger.log("CCUsageDB init 失败 - 无法打开 ccusage.db")
+            throw SyncError.dbOpenFailed(UsageDBPath.ccusageDefault)
+        }
+        DiagnosticLogger.log("CCUsageDB init OK, isOpen=\(db.isOpen)")
+
+        // 3. Claude JSONL 同步
+        var report = SyncReport()
+        report.claude = ClaudeSync.sync(db: db, projectsDirURL: projectsURL)
+        DiagnosticLogger.log("ClaudeSync 完成: scanned=\(report.claude.scanned) records=\(report.claude.records) newFiles=\(report.claude.newFiles) updated=\(report.claude.updated) err=\(report.claude.errors)")
+
+        // 4. ZCode model_usage 增量同步
+        report.zcode = ZCodeSync.sync(db: db, zcodeDB: zcodeURL)
+        DiagnosticLogger.log("ZCodeSync 完成: new=\(report.zcode.new) skip=\(report.zcode.skipped) err=\(report.zcode.errors) watermark before=\(report.zcode.watermarkBefore) after=\(report.zcode.watermarkAfter)")
+
+        // 5. 主动 checkpoint
+        db.checkpointWAL()
+        DiagnosticLogger.log("WAL checkpoint 完成 (PASSIVE)")
+
+        return report
     }
 
     /// 在 Terminal.app 打开一个新窗口，预填 cc-usage sync 命令
@@ -143,7 +238,38 @@ final class SyncRunner: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 await self?.syncNow()
+                // timer 触发的 sync 走自动模式 — sync 成功后通知 viewModel refresh
+                // 把新写入 DB 的数据投射到 UI（bootstrap/manualSync 不需要走这条，
+                // 它们末尾自己调过 refresh；只有 timer 这里需要发通知）。
+                NotificationCenter.default.post(name: .tokenMonitorDidSync, object: nil)
             }
+        }
+    }
+}
+
+extension Notification.Name {
+    /// SyncRunner 自动 timer 触发 syncNow 后发出，让 DashboardViewModel
+    /// 跑 refresh() + reopenDBIfChanged() + pushWidgetSnapshot() 把新写入
+    /// ccusage.db 的数据刷新到主面板 + 浮窗 UI。
+    static let tokenMonitorDidSync = Notification.Name("TokenMonitorDidSync")
+}
+
+// MARK: - Sync Report / Error
+
+/// 一轮 Swift sync 的统计汇总。UI 展示用（设置页同步卡片）。
+struct SyncReport {
+    var claude = ClaudeSyncStats()
+    var zcode = ZCodeSyncStats()
+}
+
+enum SyncError: LocalizedError {
+    case notAuthorized(String)
+    case dbOpenFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .notAuthorized(let what): return "\(what)（请在设置里授权）"
+        case .dbOpenFailed(let path): return "无法打开 \(path)"
         }
     }
 }

@@ -25,36 +25,46 @@ final class UsageDB {
     init?(path: String) {
         self.path = path
 
-        // sandbox=true 下：优先用 security-scoped bookmark 授权的 URL
-        // sandbox=false 下：bookmark 也没有，直接用路径
+        // 优先走 bookmark（sandbox 模式必需）；bookmark 不可用时 fallback 到 path。
+        // sandbox=false 下 NSHomeDirectory() 返回真实 ~, path 就是 ~/.claude/ccusage.db。
         let resolvedPath: String
-        if let bookmarkURL = BookmarkStore.shared.resolve(.ccusageDB) {
-            securityScopedURL = bookmarkURL
-            resolvedPath = bookmarkURL.path
+        if let dirURL = BookmarkStore.shared.resolve(.ccusageDB) {
+            securityScopedURL = dirURL
+            resolvedPath = UsageDBPath.ccusagePath(in: dirURL)
         } else {
             resolvedPath = path
         }
 
         guard FileManager.default.fileExists(atPath: resolvedPath) else {
-            securityScopedURL.map { BookmarkStore.shared.release($0) }
+            BookmarkStore.shared.release(securityScopedURL!)
+            securityScopedURL = nil
+            DiagnosticLogger.log("UsageDB init = nil — \(resolvedPath) 文件不存在 (ccusage.db 还没建, 先手动同步一次让 CCUsageDB 建库)")
             return nil
         }
 
-        // 两级降级：immutable=1 失败则 mode=ro，避免锁住正在写入的进程
+        // 关键：读 ccusage.db 必须读 -wal 副文件（Swift SyncRunner / Python cc-usage
+        // 写的新数据都在 WAL 里，主库文件还是老快照）。
+        //   - mode=ro   : 只读 + 读 WAL，能看到其他进程的写入 ✅
+        //   - immutable=1: SQLite 假定文件永不变，**直接忽略 -wal**，只看主库快照 ❌
+        // 之前 candidates 把 immutable=1 排在前面，导致 UI 永远显示老快照（10.24M 卡死
+        // 而 DB 实际有 9097万 就是这个原因）。已彻底移除 immutable=1 候选。
         let candidates = [
-            "file:\(resolvedPath)?immutable=1",
             "file:\(resolvedPath)?mode=ro",
+            "file:\(resolvedPath)",
         ]
         for url in candidates {
             var db: OpaquePointer?
             let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_URI
             if sqlite3_open_v2(url, &db, flags, nil) == SQLITE_OK {
                 self.handle = db
+                DiagnosticLogger.log("UsageDB init OK — path=\(resolvedPath)")
                 return
             }
             sqlite3_close(db)
         }
-        securityScopedURL.map { BookmarkStore.shared.release($0) }
+        BookmarkStore.shared.release(securityScopedURL!)
+        securityScopedURL = nil
+        DiagnosticLogger.log("UsageDB init = nil — sqlite3_open_v2 全部候选失败")
         return nil
     }
 
@@ -148,5 +158,18 @@ enum UsageDBPath {
         URL(fileURLWithPath: NSHomeDirectory())
             .appendingPathComponent(".zcode/cli/db/db.sqlite")
             .path
+    }
+
+    /// 通过 .claude 目录 bookmark 解出 ccusage.db 的实际可写路径。
+    ///
+    /// 背景：sandbox 下 SQLite 要写 -wal / -shm 副文件，单文件 bookmark 不允许在同
+    /// 目录创建副文件（SQLITE_CANTOPEN rc=14）。所以 ccusageDB bookmark 授权的是
+    /// `~/.claude` 目录本身（不是 ccusage.db 文件），sandbox 才能读写目录内任意文件。
+    /// 调用方需持有 bookmark URL（startAccessingSecurityScopedResource 已调）。
+    ///
+    /// - Parameter dirURL: 已 startAccessing 的 .claude 目录 URL
+    /// - Returns: dirURL/ccusage.db 的路径
+    static func ccusagePath(in dirURL: URL) -> String {
+        dirURL.appendingPathComponent("ccusage.db").path
     }
 }

@@ -18,7 +18,7 @@ WIDGET_APPEX="WidgetSupport.appex"
 APP_BUNDLE_ID="com.luoqi.tokenmonitor"
 WIDGET_BUNDLE_ID="com.luoqi.tokenmonitor.widget"
 TEAM_ID="N5YV5FV235"
-MARKETING_VERSION="0.1.0"
+MARKETING_VERSION="0.2.0"
 
 # 颜色输出
 RED='\033[0;31m'
@@ -518,12 +518,12 @@ case "$MODE" in
         for size in 16 32 64 128 256 512 1024; do
             rsvg-convert "$SVG_FILE" -w $size -h $size \
                 -o "${ICONSET}/icon_${size}x${size}.png"
-            if [ $size -le 512 ]; then
+            # 同时产出 @2x 版本：size 当 @2x，对应 half 当 1x
+            # 例如 size=1024 → icon_1024x1024.png，并 cp 为 icon_512x512@2x.png
+            if [ $size -ge 32 ]; then
                 half=$((size / 2))
-                if [ $half -ge 16 ]; then
-                    cp "${ICONSET}/icon_${size}x${size}.png" \
-                       "${ICONSET}/icon_${half}x${half}@2x.png"
-                fi
+                cp "${ICONSET}/icon_${size}x${size}.png" \
+                   "${ICONSET}/icon_${half}x${half}@2x.png"
             fi
         done
 

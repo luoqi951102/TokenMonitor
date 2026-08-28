@@ -12,6 +12,7 @@ struct ContentView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var tab: Tab = .overview
+    @State private var hoveringModelID: String? = nil
 
     enum Tab: String, CaseIterable {
         case overview
@@ -59,6 +60,9 @@ struct ContentView: View {
                         ToolCallView(viewModel: viewModel)
                     }
                 }
+                // tab 切换时内容整体上浮淡入（配合 tabBar 的 withAnimation）
+                .id(tab)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
             .padding(16)
         }
@@ -75,24 +79,27 @@ struct ContentView: View {
     private var tabBar: some View {
         HStack(spacing: 2) {
             ForEach(Tab.allCases, id: \.self) { t in
-                Button(action: { tab = t }) {
+                Button(action: {
+                    // tab 切换带过渡动画：内容整体上浮淡入
+                    withAnimation(.easeOut(duration: 0.22)) { tab = t }
+                }) {
                     HStack(spacing: 4) {
                         Image(systemName: t.icon).font(.system(size: 10))
-                        Text(t.label).font(.caption.weight(tab == t ? .semibold : .regular))
+                        Text(t.label).font(Theme.Typography.body.weight(tab == t ? .semibold : .regular))
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
-                    .background(tab == t ? Theme.brand.opacity(0.18) : .clear)
+                    .background(tab == t ? Theme.brand.opacity(0.12) : .clear)
                     .foregroundStyle(tab == t ? Theme.brand : .primary)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
             Spacer()
         }
         .padding(3)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control + 2, style: .continuous))
     }
 
     // MARK: - Overview Tab
@@ -100,12 +107,22 @@ struct ContentView: View {
     private var overviewTab: some View {
         VStack(alignment: .leading, spacing: 10) {
             kpiRow
+                .staggerAppear(tab: tab, index: 0)
             // streak（跨 range 不变，永远显示当前状态）
             StreakCard(streak: viewModel.streak)
+                .staggerAppear(tab: tab, index: 1)
             topModelsCard
+                .staggerAppear(tab: tab, index: 2)
             // 项目维度 Top 5
             ProjectRankingView(projects: viewModel.topProjects(5))
+                .staggerAppear(tab: tab, index: 3)
+            // 今日时段分布（仅今日且有数据时显示）
+            if viewModel.range == .today && !viewModel.hourly.isEmpty {
+                hourlyCard
+                    .staggerAppear(tab: tab, index: 4)
+            }
             trendCard
+                .staggerAppear(tab: tab, index: 5)
         }
     }
 
@@ -114,15 +131,15 @@ struct ContentView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Image(systemName: "chart.bar.xaxis")
-                .font(.system(size: 22, weight: .semibold))
+                .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(Theme.brandGradient)
                 .frame(width: 22, height: 22)
 
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text("Token Monitor")
-                    .font(.title3.weight(.semibold))
+                    .font(Theme.Typography.title)
                 Text(viewModel.syncStatusText)
-                    .font(.caption2)
+                    .font(Theme.Typography.caption)
                     .foregroundStyle(.secondary)
             }
 
@@ -178,8 +195,8 @@ struct ContentView: View {
                 }
             }
             .padding(3)
-            .background(.regularMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
 
             Spacer()
 
@@ -192,8 +209,8 @@ struct ContentView: View {
                 }
             }
             .padding(3)
-            .background(.regularMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
         }
     }
 
@@ -209,56 +226,66 @@ struct ContentView: View {
     private func filterChip(_ title: String, isActive: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.caption.weight(isActive ? .semibold : .regular))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(isActive ? Theme.brand.opacity(0.18) : .clear)
+                .font(Theme.Typography.body.weight(isActive ? .semibold : .regular))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(isActive ? Theme.brand.opacity(0.12) : .clear)
                 .foregroundStyle(isActive ? Theme.brand : .primary)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
         }
         .buttonStyle(.plain)
     }
 
     // MARK: - KPI Row
+    //
+    // 三栏 KPI 合并为单一卡片容器，用 hairline Divider 分割。
+    // 比「三个独立卡片拼排」更连贯，留白更通透，跟 macOS Tahoe 系统工具风一致。
 
     private var kpiRow: some View {
-        HStack(spacing: 8) {
-            kpi(label: "总 Token", value: formatTokens(viewModel.totalTokens), color: Theme.brand)
-            kpi(label: "消息数", value: formatNumber(viewModel.totalMsgs), color: Theme.tokenCacheWrite)
-            kpi(label: "工具调用", value: formatNumber(viewModel.totalToolCalls), color: Theme.tokenCacheRead)
+        HStack(spacing: 0) {
+            kpi(label: "总 Token", value: formatTokens(viewModel.totalTokens), tokens: viewModel.totalTokens)
+            Divider().frame(height: 32).opacity(0.25)
+            kpi(label: "消息数", value: formatNumber(viewModel.totalMsgs), tokens: viewModel.totalMsgs)
+            Divider().frame(height: 32).opacity(0.25)
+            kpi(label: "工具调用", value: formatNumber(viewModel.totalToolCalls), tokens: viewModel.totalToolCalls)
         }
+        .padding(.vertical, 10)
+        .background(Theme.cardBackground(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 
-    private func kpi(label: String, value: String, color: Color) -> some View {
+    private func kpi(label: String, value: String, tokens: Int) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(value)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .font(Theme.Typography.metric)
                 .monospacedDigit()
-                .foregroundStyle(color)
+                .foregroundStyle(.primary)
+                .contentTransition(.numericText(value: Double(tokens)))
+                .animation(.easeOut(duration: 0.3), value: tokens)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                // 刷新后大数字短暂放大 spring 一下，跟浮窗同款 refreshPulse 信号
+                .scaleEffect(viewModel.refreshPulse ? 1.06 : 1.0)
+                .animation(.spring(response: 0.35, dampingFraction: 0.55), value: viewModel.refreshPulse)
             Text(label)
-                .font(.caption2)
+                .font(Theme.Typography.caption)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 8)
-        .padding(.horizontal, 10)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 12)
     }
 
     // MARK: - Top Models
 
     private var topModelsCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Top 模型")
-                    .font(.caption.weight(.medium))
+                    .font(Theme.Typography.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text("\(viewModel.models.count) 个模型 · 切到「模型」tab 看全部")
-                    .font(.caption2)
+                    .font(Theme.Typography.caption)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -266,69 +293,140 @@ struct ContentView: View {
 
             if viewModel.models.isEmpty {
                 Text(viewModel.hasDB ? "区间内无数据" : "未连接到 ccusage.db")
-                    .font(.caption)
+                    .font(Theme.Typography.body)
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 16)
             } else {
                 let maxTotal = viewModel.models.first?.totalTokens ?? 1
+                // 环形占比图 + 精简 Top 6 列表（并排），占比一目了然
+                let top6 = Array(viewModel.models.prefix(6))
+                let totalTokens = top6.reduce(0) { $0 + $1.totalTokens }
+                HStack(alignment: .center, spacing: 14) {
+                    // 环形占比图：Top 6 模型按 token 占比
+                    DonutChart(
+                        segments: top6.map { usage in
+                            DonutSegment(
+                                color: Theme.modelColor(usage.model + usage.provider),
+                                value: Double(usage.totalTokens)
+                            )
+                        },
+                        ringWidth: 12,
+                        centerTitle: "Top \(top6.count)",
+                        centerValue: formatTokens(totalTokens)
+                    )
+                    .frame(width: 108, height: 108)
+
+                    // 右侧：Top 6 排名（紧凑版，带占比百分比）
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(top6.enumerated()), id: \.element.id) { idx, usage in
+                            HStack(spacing: 6) {
+                                Text("\(idx + 1)")
+                                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.tertiary)
+                                    .frame(width: 12, alignment: .center)
+                                Circle()
+                                    .fill(Theme.modelColor(usage.model + usage.provider))
+                                    .frame(width: 6, height: 6)
+                                Text(usage.model)
+                                    .font(Theme.Typography.caption.weight(.medium))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer()
+                                Text("\(Int(Double(usage.totalTokens) / Double(max(1, totalTokens)) * 100))%")
+                                    .font(.system(size: 9, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                .padding(.bottom, 6)
+
+                Divider().opacity(0.3)
+
                 // 总览只展示 Top 8，避免面板溢出；完整列表在「模型」tab
                 ForEach(viewModel.topModels(8)) { usage in
                     modelBar(usage, maxTotal: maxTotal)
                 }
             }
         }
-        .padding(12)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(14)
+        .background(Theme.cardBackground(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 
     private func modelBar(_ usage: ModelUsage, maxTotal: Int) -> some View {
         let pct = maxTotal > 0 ? Double(usage.totalTokens) / Double(maxTotal) : 0
         let providerName = providerDisplayName(usage.provider, model: usage.model)
+        // 次行：provider 后追加来源后缀（Claude Code / ZCode），避免同 provider 不同 source 歧义
+        // 例：浙算MaaS 同时出现在 Claude Code 和 ZCode，单看 "浙算MaaS" 无法辨认
+        // 用闭包生成 Text concat：provider 名 + 弱色 source 后缀，渲染一体但颜色分层
+        // 用短标签 CC/ZC 节省宽度（与浮窗一致）
+        let sourceLabel = UsageSource(rawValue: usage.source)?.shortLabel ?? usage.source
+        let providerFull = providerName.isEmpty
+            ? usage.model
+            : "\(usage.model) · \(providerName)"
         return HStack(spacing: 8) {
             Circle()
                 .fill(Theme.modelColor(usage.model + usage.provider))
-                .frame(width: 8, height: 8)
-            VStack(alignment: .leading, spacing: 0) {
+                .frame(width: 7, height: 7)
+            VStack(alignment: .leading, spacing: 1) {
                 Text(usage.model)
-                    .font(.caption.weight(.medium))
+                    .font(Theme.Typography.body.weight(.medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                if !providerName.isEmpty {
-                    Text(providerName)
-                        .font(.system(size: 8))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
+                // 次行：用 Text + Text concat，provider 用 .tertiary，source 后缀更弱显
+                // 让 source 不会喧宾夺主，又能明确区分来源通道。
+                (
+                    Text(providerName.isEmpty ? "" : providerName)
+                    + Text(providerName.isEmpty ? sourceLabel : " · \(sourceLabel)")
+                )
+                .font(Theme.Typography.caption)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .truncationMode(.middle)
             }
-            .frame(width: 108, alignment: .leading)
+            .frame(width: 110, alignment: .leading)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
+                    RoundedRectangle(cornerRadius: Theme.Radius.bar, style: .continuous)
                         .fill(.quaternary.opacity(0.4))
-                    RoundedRectangle(cornerRadius: 3)
+                    RoundedRectangle(cornerRadius: Theme.Radius.bar, style: .continuous)
                         .fill(Theme.modelColor(usage.model + usage.provider).opacity(0.85))
                         .frame(width: max(4, geo.size.width * pct))
                 }
             }
-            .frame(height: 10)
+            .frame(height: 8)
             Text(formatTokens(usage.totalTokens))
-                .font(.caption2.monospacedDigit())
+                .font(Theme.Typography.captionMonospaced)
                 .foregroundStyle(.secondary)
                 .frame(width: 52, alignment: .trailing)
         }
         .frame(height: 26)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                .fill(hoveringModelID == usage.id ? Color.primary.opacity(0.04) : .clear)
+        )
+        .contentShape(Rectangle())
+        .onHover { hoveringModelID = $0 ? usage.id : nil }
+        .help(providerFull)
+        .animation(.easeInOut(duration: 0.15), value: hoveringModelID)
     }
 
     // MARK: - Trend
+    //
+    // 趋势图两套渲染：
+    //   - 密度 ≤ 14：传统柱状图（每天一根柱，柱顶 + 日期标签可读）
+    //   - 密度 > 14：sparkline（1px hairline Path，末端 accent dot 标最新点）
+    // sparkline 跟 Apple 系统工具的 trend indicator 一致，更轻、更现代。
 
     private var trendCard: some View {
-        // range=all 时区间可能跨数月，按天展示柱太密，最多展示最近 30 天
         let displayData: [DailyTotal] = {
             let cap: Int
             switch viewModel.range {
-            case .today, .week: cap = 14
+            case .today, .week, .lastWeek: cap = 14
             case .month: cap = 31
             case .all: cap = 30
             }
@@ -338,11 +436,11 @@ struct ContentView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("趋势")
-                    .font(.caption.weight(.medium))
+                    .font(Theme.Typography.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(viewModel.rangeLabel)
-                    .font(.caption2)
+                    .font(Theme.Typography.caption)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -350,48 +448,222 @@ struct ContentView: View {
 
             if displayData.isEmpty {
                 Text("区间内无数据")
-                    .font(.caption)
+                    .font(Theme.Typography.body)
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 12)
             } else {
+                // 统一用柱状图渲染所有 range：日/周/上周/月/全部 都走同一套,
+                // 视觉对齐 + 切 range 时视线连续。柱子 > 14 根时只显示 selected 柱
+                // 的数字（避免 30+ 根柱子挤一起上方数字标签碰撞）。
+                //
+                // 生长动画：displayData 变化时（切 range / 刷新）柱高从旧值 spring
+                // 到新值；每根柱 .id(d.date) + transition 让新柱从底部淡入弹起。
                 let maxTokens = displayData.map(\.tokens).max() ?? 1
-                // 柱间距随密度自适应：柱少时间距大、柱多时紧凑
-                let spacing: CGFloat = displayData.count > 20 ? 1.5 : (displayData.count > 10 ? 3 : 5)
+                let n = displayData.count
+                let spacing: CGFloat = n > 20 ? 1.5 : (n > 10 ? 3 : 5)
+                let showAllTexts: Bool = n <= 14
                 HStack(alignment: .bottom, spacing: spacing) {
-                    ForEach(displayData) { d in
-                        VStack(spacing: 2) {
-                            // 柱多时只显示部分柱顶数字，避免拥挤
-                            if displayData.count <= 14 {
-                                Text(formatTokens(d.tokens))
-                                    .font(.system(size: 8, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.6)
-                            }
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(Theme.chartBar)
-                                .frame(height: barHeight(d.tokens, max: maxTokens))
-                            // 柱多时只显示首尾日期
-                            if displayData.count <= 14 {
-                                Text(String(d.date.suffix(5)))
-                                    .font(.system(size: 8))
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
+                    ForEach(Array(displayData.enumerated()), id: \.element.id) { idx, d in
+                        trendBar(
+                            d,
+                            maxTokens: maxTokens,
+                            isMax: d.tokens == maxTokens && maxTokens > 0,
+                            showAllTexts: showAllTexts,
+                            idx: idx,
+                            total: n
+                        )
                     }
                 }
-                .frame(height: displayData.count > 14 ? 60 : 90)
+                .frame(height: 90)
+                .animation(.spring(response: 0.5, dampingFraction: 0.8), value: displayData)
             }
         }
-        .padding(12)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(14)
+        .background(Theme.cardBackground(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+    }
+
+    // MARK: - 今日时段分布（热力条）
+    //
+    // 24 小时（0-23）垂直小条，高度按该小时 token 占比，颜色从弱到强
+    // （brandFaint → brand 渐变热力感），直观看到一天哪时段最烧 token。
+    // 仅在 range == .today 且 hourly 非空时显示。
+
+    private var hourlyCard: some View {
+        let buckets = viewModel.hourly  // [HourlyBucket] hour 0-23
+        let maxTokens = buckets.map(\.tokens).max() ?? 1
+        let peakHour = buckets.max { $0.tokens < $1.tokens }?.hour
+        let nowHour = Calendar.current.component(.hour, from: Date())
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("今日时段分布")
+                    .font(Theme.Typography.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if let peak = peakHour {
+                    Text("峰值 \(peak):00 · \(formatTokens(buckets.max(by: { $0.tokens < $1.tokens })?.tokens ?? 0))")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(Theme.brand)
+                }
+            }
+
+            HStack(alignment: .bottom, spacing: 2) {
+                ForEach(0..<24, id: \.self) { hour in
+                    let tokens = buckets.first { $0.hour == hour }?.tokens ?? 0
+                    let ratio = maxTokens > 0 ? Double(tokens) / Double(maxTokens) : 0
+                    let isPeak = tokens > 0 && hour == peakHour
+                    let isNow = hour == nowHour
+                    // 热力色：弱 = brandFaint，强 = brand，峰值 = brand 全饱和 + 呼吸
+                    VStack(spacing: 1) {
+                        ZStack(alignment: .bottom) {
+                            RoundedRectangle(cornerRadius: 1.5)
+                                .fill(
+                                    tokens == 0
+                                        ? Color.primary.opacity(0.05)
+                                        : Theme.brand.opacity(0.25 + 0.75 * ratio)
+                                )
+                                .frame(width: 6, height: max(3, CGFloat(ratio) * 36))
+                                .animation(.spring(response: 0.4, dampingFraction: 0.75), value: buckets)
+                            // 峰值：顶上加个小亮点（TimelineView 驱动呼吸）
+                            if isPeak {
+                                TimelineView(.periodic(from: Date(), by: 0.2)) { ctx in
+                                    let phase = ctx.date.timeIntervalSince1970
+                                        .truncatingRemainder(dividingBy: 2.0) / 2.0
+                                    Circle()
+                                        .fill(Theme.brand)
+                                        .frame(width: 3, height: 3)
+                                        .offset(y: -max(3, CGFloat(ratio) * 36) / 2 - 4)
+                                        .opacity(0.4 + 0.6 * phase)
+                                }
+                            }
+                        }
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                        // 当前小时加个底部刻度点
+                        if isNow {
+                            Circle()
+                                .fill(Theme.brand.opacity(0.6))
+                                .frame(width: 3, height: 3)
+                        }
+                    }
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                }
+            }
+            .frame(height: 46, alignment: .bottom)
+
+            // 小时刻度
+            HStack(spacing: 2) {
+                Text("0")
+                Spacer()
+                Text("6")
+                Spacer()
+                Text("12")
+                Spacer()
+                Text("18")
+                Spacer()
+                Text("23")
+            }
+            .font(.system(size: 8, design: .monospaced))
+            .foregroundStyle(.tertiary)
+        }
+        .padding(14)
+        .background(Theme.cardBackground(for: colorScheme))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+    }
+
+    /// 单根趋势柱（顶数字 + 柱体 + 底部日期标签）。
+    /// 拆成独立函数避免 ForEach 闭包过重触发 Swift 类型检查超时。
+    private func trendBar(
+        _ d: DailyTotal,
+        maxTokens: Int,
+        isMax: Bool,
+        showAllTexts: Bool,
+        idx: Int,
+        total: Int
+    ) -> some View {
+        VStack(spacing: 2) {
+            if showAllTexts || isMax {
+                Text(formatTokens(d.tokens))
+                    .font(Theme.Typography.captionMonospaced)
+                    .foregroundStyle(isMax ? Theme.brand : Color.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+            } else {
+                Text("0")
+                    .font(Theme.Typography.captionMonospaced)
+                    .foregroundStyle(.clear)
+                    .lineLimit(1)
+            }
+            RoundedRectangle(cornerRadius: Theme.Radius.bar, style: .continuous)
+                .fill(isMax ? Theme.brandGradient : Theme.chartBar)
+                .frame(height: barHeight(d.tokens, max: maxTokens))
+            if showAllTexts || idx == 0 || idx == total - 1 || (total > 3 && idx == total / 2) {
+                Text(String(d.date.suffix(5)))
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(isMax ? Theme.brand.opacity(0.8) : Color.secondary.opacity(0.7))
+            } else {
+                Text("00/00")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(.clear)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .id(d.date)
+        .transition(.scale(scale: 0.2, anchor: .bottom).combined(with: .opacity))
+        .animation(.spring(response: 0.45, dampingFraction: 0.75), value: maxTokens)
     }
 
     private func barHeight(_ v: Int, max m: Int) -> CGFloat {
         guard m > 0 else { return 4 }
-        return max(4, CGFloat(v) / CGFloat(m) * 60)
+        // 防御除 0 / 负数 → NaN/Infinity（SwiftUI frame(height: nan) 会触发
+        // CollectingViewsWithInvalidBaselines 异常导致切源时崩溃）
+        let ratio = max(0, min(Double(v) / Double(m), 1.0))
+        return max(4, CGFloat(ratio) * 60)
+    }
+}
+
+// MARK: - Stagger Appear
+//
+// 卡片入场 stagger：切 tab 时每张卡按 index 错峰上浮淡入。
+// 依赖 ContentView 的 tab state 变化（withAnimation 包裹），
+// delay = index * 0.04s，形成逐个浮入的效果。
+
+private extension View {
+    /// 卡片入场 stagger：切 tab 时按 index 错峰上浮淡入
+    func staggerAppear(tab: ContentView.Tab, index: Int) -> some View {
+        modifier(StaggerAppear(tab: tab, index: index))
+    }
+}
+
+private struct StaggerAppear: ViewModifier {
+    let tab: ContentView.Tab
+    let index: Int
+
+    @State private var tabAppear = false
+
+    init(tab: ContentView.Tab, index: Int) {
+        self.tab = tab
+        self.index = index
+        // 每次 modifier 重建（tab 变化时 ContentView body 重建）都从隐藏态开始，
+        // 再在 onAppear/onChange 里动画进入 → 形成"逐个浮入"
+        _tabAppear = State(initialValue: false)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(tabAppear ? 1 : 0)
+            .offset(y: tabAppear ? 0 : 12)
+            .onAppear {
+                withAnimation(.easeOut(duration: 0.3).delay(Double(index) * 0.04)) {
+                    tabAppear = true
+                }
+            }
+            .onChange(of: tab) { _, _ in
+                tabAppear = false
+                withAnimation(.easeOut(duration: 0.3).delay(Double(index) * 0.04)) {
+                    tabAppear = true
+                }
+            }
     }
 }

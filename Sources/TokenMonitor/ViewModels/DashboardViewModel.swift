@@ -39,6 +39,21 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var lastUpdated: Date?
     @Published private(set) var dataSpan: (start: String?, end: String?) = (nil, nil)
 
+    /// 最近一次"数据真的刷新了"的时刻。manualSync / 自动 timer / 切换 range/source
+    /// 都会更新它。UI 监听这个值触发数字 pulse / 按钮高亮等"我刚刷过了"的视觉特效。
+    @Published var lastRefreshAt: Date = Date()
+
+    /// 数字 pulse 开关。refresh() 完成后置 true，0.45s 后回 false。
+    /// UI 用它驱动大数字短暂放大 spring动画，给"数据刷新了"留视觉印记。
+    /// 不能用纯 @State 在视图内做：视图重建会丢状态；放 viewModel 保证跨视图一致。
+    @Published private(set) var refreshPulse: Bool = false
+    private var pulseWork: Task<Void, Never>?
+
+    // SyncRunner 自动 timer 触发 syncNow 后会发 .tokenMonitorDidSync 通知，
+    // 这里存 observer token 用于 shutdown 时 remove。这样 UI 才能每分钟自动看到
+    // 新写入 DB 的数据（不然 SyncRunner 写库成功 UI 仍显示老快照）。
+    private var syncObserver: NSObjectProtocol?
+
     // MARK: - Errors
 
     @Published private(set) var errorMessage: String?
@@ -47,6 +62,11 @@ final class DashboardViewModel: ObservableObject {
     // MARK: - Aggregator
 
     private var aggregator: Aggregator?
+    /// 上次 openDB 时记录的 ccusage.db mtime，用于 refresh() 时判断是否需要重建。
+    /// 高频路径（5min timer / 浮窗刷新按钮）不需要每次重建 aggregator，
+    /// 否则会反复 resolve/release security-scoped bookmark，
+    /// 在 sandbox 下间歇读不到 ZCode 库（工具调用显示 0 的 bug 根因）。
+    private var lastSeenCCUsageMtime: Date? = nil
 
     // MARK: - Init
 
@@ -67,10 +87,32 @@ final class DashboardViewModel: ObservableObject {
             aggregator = Aggregator(db: db, zcodeDB: zcode)
             hasDB = true
             dataSpan = aggregator?.dataSpan() ?? (nil, nil)
+            lastSeenCCUsageMtime = ccusageMtime()
         } else {
             aggregator = nil
             hasDB = false
+            lastSeenCCUsageMtime = nil
         }
+    }
+
+    /// 只在 ccusage.db mtime 变化时重建 aggregator，避免高频路径反复
+    /// resolve/release security-scoped bookmark 引起 ZCode 句柄间歇性失效。
+    private func reopenDBIfChanged() {
+        let now = ccusageMtime()
+        guard now != lastSeenCCUsageMtime else { return }
+        openDB()
+    }
+
+    private func ccusageMtime() -> Date? {
+        let resolvedPath: String
+        if let dirURL = BookmarkStore.shared.resolve(.ccusageDB) {
+            defer { BookmarkStore.shared.release(dirURL) }
+            resolvedPath = UsageDBPath.ccusagePath(in: dirURL)
+        } else {
+            resolvedPath = UsageDBPath.ccusageDefault
+        }
+        let attrs = try? FileManager.default.attributesOfItem(atPath: resolvedPath)
+        return attrs?[.modificationDate] as? Date
     }
 
     // MARK: - Lifecycle
@@ -78,22 +120,57 @@ final class DashboardViewModel: ObservableObject {
     func bootstrap() {
         openDB()
         syncRunner.startTimer()
+        // 监听自动 timer 触发的 sync，sync 完成后做强制 openDB + refresh +
+        // pushWidgetSnapshot 把新写入 DB 的数据刷到 UI；这是 1 分钟同步能"看到刷新"的关键。
+        //
+        // 注意：这里**强制 openDB()** 而不是 reopenDBIfChanged()。因为：
+        // 1. sync 一定写了数据到 ccusage.db（ClaudeSync + ZCodeSync + checkpoint）
+        // 2. checkpoint 是 PASSIVE，不保证把 WAL 全部落回主库 → mtime 可能不变
+        // 3. mtime 不变 → reopenDBIfChanged 不会重建 aggregator → UI 看不到新数据
+        // 这正是之前"1 分钟刷新没做到位"的根本原因：timer 跑了但 aggregator 没换。
+        // 强制 openDB() 重建只读 UsageDB 句柄（mode=ro 能读 WAL），aggregator 就拿到新数据了。
+        syncObserver = NotificationCenter.default.addObserver(
+            forName: .tokenMonitorDidSync,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.openDB()              // 强制重建只读句柄（mode=ro 读 WAL）
+                self.refresh()
+                self.pushWidgetSnapshot()
+                self.lastRefreshAt = Date()  // 触发 UI pulse 特效
+            }
+        }
         Task {
             await syncRunner.syncNow()
-            openDB()  // sync 完成后重新打开（DB 可能刚被创建）
+            openDB()
             refresh()
             pushWidgetSnapshot()
+            lastRefreshAt = Date()
         }
         refresh()  // 立即用现有缓存数据展示
     }
 
     func shutdown() {
         syncRunner.stopTimer()
+        if let syncObserver {
+            NotificationCenter.default.removeObserver(syncObserver)
+            self.syncObserver = nil
+        }
+        pulseWork?.cancel()
+        pulseWork = nil
     }
 
     // MARK: - Refresh
 
     func refresh() {
+        // refresh 高频被调用（5min timer / 浮窗刷新按钮 / menu close 后 reopen 等）
+        // 不能每次都重建 aggregator —— 仅在 ccusage.db mtime 变化时才重建。
+        // 否则 ZCodeUsageDB 的 security-scoped bookmark 会被反复 resolve/release，
+        // 在 sandbox 下间歇性读到 nil，导致工具调用显示 0 的 bug。
+        reopenDBIfChanged()
+
         guard let aggregator else {
             errorMessage = hasDB ? "数据库未就绪" : "未找到 ~/.claude/ccusage.db，请先运行 cc-usage sync"
             return
@@ -122,19 +199,44 @@ final class DashboardViewModel: ObservableObject {
         wow = aggregator.weekOverWeek(sourceFilter: src)
         dataSpan = aggregator.dataSpan()
         lastUpdated = Date()
+        lastRefreshAt = Date()  // 触发 UI pulse / 数字滚动特效
         isLoading = false
+        triggerPulse()
+    }
+
+    /// 启动 0.45s pulse 动画：refreshPulse 短暂置 true 再回 false。
+    /// 上一次没结束的 pulse 会被取消（连续刷新不卡顿）。
+    private func triggerPulse() {
+        pulseWork?.cancel()
+        refreshPulse = true
+        pulseWork = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            guard !Task.isCancelled else { return }
+            self?.refreshPulse = false
+        }
     }
 
     // MARK: - Manual Sync
     //
-    // sandbox=true 下无法 spawn cc-use，manualSync 只重新读 DB + 刷新视图。
-    // 实际数据同步由用户在终端运行 `cc-usage sync` 完成，或通过 launchd 定时跑。
+    // Swift sync 私有化后：syncNow 在三授权齐全时跑 ClaudeSync + ZCodeSync 真同步，
+    // 把 JSONL + ZCode model_usage 增量写进 ccusage.db，不再依赖外部 Python cc-usage。
+    // 未授权则走 fallback（数据由终端 cc-usage sync 或 launchd 产出）。
+    //
+    // 注意：openDB 会销毁旧 aggregator 并重建 UsageDB/ZCodeUsageDB 实例。
+    // 高频路径（5 分钟 timer / 浮窗刷新按钮）请只调 refresh()，不要走 openDB()，
+    // 否则会反复 resolve/release security-scoped bookmark 引起 sandbox
+    // 间歇性读不到 ZCode 库（工具调用显示 0 的 bug 根因）。
 
     func manualSync() async {
         await syncRunner.syncNow()
+        // Swift sync 一定会改 ccusage.db，强制 openDB 重建只读句柄（确保读到新数据）
+        // ccusage.db 主库 mtime 不一定变（PASSIVE checkpoint 不保证全部落回主库），
+        // 所以这里不能用 reopenDBIfChanged()，必须强制 openDB()，否则 aggregator
+        // 复用老的 UsageDB 句柄（持有 WAL 旧 snapshot），看不到刚写入的新数据。
         openDB()
         refresh()
         pushWidgetSnapshot()
+        lastRefreshAt = Date()
     }
 
     // MARK: - Computed
