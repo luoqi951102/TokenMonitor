@@ -1,5 +1,109 @@
 import SwiftUI
 
+// MARK: - BorderBeam（Linear 风格边框流光）
+//
+// 卡片边框上一段亮色"光束"沿边框匀速旋转，同色柔光拖尾。
+// 实现：AngularGradient 窄亮段（透明→亮→透明）+ rotationEffect 随时间旋转，
+// 叠一层 blur 同渐变做发光。TimelineView 20fps 驱动，开销极轻。
+
+struct BorderBeam: ViewModifier {
+    var color: Color
+    var cornerRadius: CGFloat = 14
+    var speed: Double = 6.0        // 秒/圈
+    var beamFraction: Double = 0.22 // 光束占整圈比例
+    var lineWidth: CGFloat = 1.4
+
+    func body(content: Content) -> some View {
+        content.overlay {
+            TimelineView(.periodic(from: .now, by: 0.05)) { ctx in
+                let t = ctx.date.timeIntervalSinceReferenceDate
+                let deg = t.truncatingRemainder(dividingBy: speed) / speed * 360.0
+                beamShape(rotation: deg)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func beamShape(rotation: Double) -> some View {
+        let gradient = AngularGradient(
+            stops: [
+                .init(color: color.opacity(0), location: 0),
+                .init(color: color.opacity(0), location: max(0, 1 - beamFraction - 0.06)),
+                .init(color: color.opacity(0.9), location: max(0, 1 - 0.05)),
+                .init(color: color.opacity(0), location: 1),
+            ],
+            center: .center
+        )
+        ZStack {
+            // 发光层：模糊的同渐变描边
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(gradient, lineWidth: lineWidth * 2.2)
+                .blur(radius: 2.5)
+                .rotationEffect(.degrees(rotation))
+            // 锐利层
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(gradient, lineWidth: lineWidth)
+                .rotationEffect(.degrees(rotation))
+        }
+    }
+}
+
+extension View {
+    /// 卡片边框流光（Linear/Arc 风格）
+    func borderBeam(color: Color, cornerRadius: CGFloat = 14, speed: Double = 6.0) -> some View {
+        modifier(BorderBeam(color: color, cornerRadius: cornerRadius, speed: speed))
+    }
+}
+
+// MARK: - OrbitParticles（环轨道粒子能量流）
+//
+// 几颗小亮点沿圆轨道流动，各自带同色拖尾，透明度随角度呈"从暗到亮到暗"
+// 的相位差——像能量脉冲绕环运行。放在 HeroRings 外环轨道上。
+
+struct OrbitParticles: View {
+    var radius: CGFloat = 48       // 轨道半径
+    var color: Color = Theme.brand
+    var count: Int = 4
+    var speed: Double = 9.0        // 秒/圈
+    var dotSize: CGFloat = 2.6
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.05)) { ctx in
+            let t = ctx.date.timeIntervalSinceReferenceDate
+            Canvas { context, size in
+                let center = CGPoint(x: size.width / 2, y: size.height / 2)
+                for i in 0..<count {
+                    // 每颗粒子相位错开 1/count 圈
+                    let phase = t / speed + Double(i) / Double(count)
+                    let angle = phase * 2 * .pi
+                    // 亮度跟相位走 sin：从暗到亮到暗（拖尾感）
+                    let alpha = 0.25 + 0.75 * (0.5 + 0.5 * sin(angle * 2))
+                    let alpha2 = 0.12 + 0.4 * (0.5 + 0.5 * sin(angle * 2 - 0.5))
+                    let alpha3 = 0.05 + 0.2 * (0.5 + 0.5 * sin(angle * 2 - 1.0))
+                    let p = CGPoint(x: center.x + cos(angle) * radius,
+                                    y: center.y + sin(angle) * radius)
+                    // 拖尾：沿轨道往回 2 颗渐弱的点
+                    let p2 = CGPoint(x: center.x + cos(angle - 0.06) * radius,
+                                     y: center.y + sin(angle - 0.06) * radius)
+                    let p3 = CGPoint(x: center.x + cos(angle - 0.12) * radius,
+                                     y: center.y + sin(angle - 0.12) * radius)
+                    let head = Path(ellipseIn: CGRect(x: p.x - dotSize/2, y: p.y - dotSize/2,
+                                                      width: dotSize, height: dotSize))
+                    context.fill(head, with: .color(color.opacity(alpha)))
+                    let mid = Path(ellipseIn: CGRect(x: p2.x - dotSize/2.4, y: p2.y - dotSize/2.4,
+                                                     width: dotSize/1.2, height: dotSize/1.2))
+                    context.fill(mid, with: .color(color.opacity(alpha2)))
+                    let tail = Path(ellipseIn: CGRect(x: p3.x - dotSize/3, y: p3.y - dotSize/3,
+                                                      width: dotSize/1.5, height: dotSize/1.5))
+                    context.fill(tail, with: .color(color.opacity(alpha3)))
+                }
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
 // MARK: - 浮窗仪表盘组件集
 //
 // Hero 整体化设计（参考 Apple Fitness Activity Rings + 同色发光手法）：
@@ -91,6 +195,11 @@ struct HeroRings: View {
             .frame(width: 100, height: 100)
             // 呼吸缩放：±1.2% 跟光晕同相位，非常轻微
             .scaleEffect(1.0 + 0.012 * breath)
+            // 粒子能量流：4 颗亮点沿外环轨道绕行带拖尾（轨道半径 48 = 外环半径）
+            .overlay(
+                OrbitParticles(radius: 48, color: Theme.brand, count: 4, speed: 9.0)
+                    .frame(width: 100, height: 100)
+            )
 
             // 右侧图例：三行（色点 + 名 + 值）
             VStack(alignment: .leading, spacing: 7) {

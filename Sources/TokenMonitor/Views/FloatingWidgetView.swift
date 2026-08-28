@@ -794,6 +794,8 @@ private struct LargeContent: View {
                     )
             )
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            // Linear 风格边框流光：品牌色光束沿卡片边框匀速旋转
+            .borderBeam(color: Theme.brand, cornerRadius: 14, speed: 7.0)
             // 轻微浮动：整卡 ±1.5pt 8s 正弦上下漂（跟 Hero 呼吸不同频，叠加更自然）
             .modifier(GentleFloat(amplitude: 1.5, period: 8.0))
             .padding(.horizontal, 16)
