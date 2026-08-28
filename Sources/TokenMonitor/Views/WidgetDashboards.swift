@@ -267,14 +267,18 @@ struct HeroRings: View {
                 Text(value)
                     .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .fixedSize()           // 禁止换行（"15.7M/时" 被拆两行的修复）
+                    .minimumScaleFactor(0.85)
                 if let pct {
                     Text(pct)
                         .font(.system(size: 7, design: .monospaced))
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
         }
-        .frame(width: 82)
+        .frame(width: 96)
     }
 }
 
@@ -550,12 +554,14 @@ struct HourlyHeatmapMini: View {
                     let ratio = maxTokens > 0 ? Double(tokens) / Double(maxTokens) : 0
                     let isPeak = tokens > 0 && hour == peakHour
                     let isNow = hour == nowHour
-                    VStack(spacing: 1) {
-                        ZStack(alignment: .bottom) {
-                            RoundedRectangle(cornerRadius: 1)
-                                .fill(heatmapColor(tokens: tokens, ratio: ratio))
-                                .frame(width: 4.5, height: max(2, CGFloat(ratio) * 26))
-                                .animation(.spring(response: 0.4, dampingFraction: 0.75), value: buckets)
+                    let barHeight = max(2, CGFloat(ratio) * 26)
+                    // 每根柱:固定画布高 30 + bottom 对齐,峰值点 overlay 挂条顶。
+                    // 不用 maxHeight:.infinity 嵌套(布局塌陷致柱子漂移/缺失)。
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(heatmapColor(tokens: tokens, ratio: ratio))
+                        .frame(width: 4.5, height: barHeight)
+                        .frame(height: 30, alignment: .bottom)
+                        .overlay(alignment: .top) {
                             if isPeak {
                                 TimelineView(.periodic(from: Date(), by: 0.2)) { ctx in
                                     let phase = ctx.date.timeIntervalSince1970
@@ -563,22 +569,23 @@ struct HourlyHeatmapMini: View {
                                     Circle()
                                         .fill(Theme.brand)
                                         .frame(width: 2.5, height: 2.5)
-                                        .offset(y: -max(2, CGFloat(ratio) * 26) / 2 - 3)
+                                        .offset(y: -4)
                                         .opacity(0.4 + 0.6 * phase)
                                 }
                             }
                         }
-                        .frame(maxHeight: .infinity, alignment: .bottom)
-                        if isNow {
-                            Circle()
-                                .fill(Theme.brand.opacity(0.6))
-                                .frame(width: 2.5, height: 2.5)
+                        .overlay(alignment: .bottom) {
+                            if isNow {
+                                Circle()
+                                    .fill(Theme.brand.opacity(0.6))
+                                    .frame(width: 2.5, height: 2.5)
+                                    .offset(y: 4)
+                            }
                         }
-                    }
-                    .frame(maxHeight: .infinity, alignment: .bottom)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.75), value: buckets)
                 }
             }
-            .frame(height: 34, alignment: .bottom)
+            .frame(height: 30, alignment: .bottom)
 
             HStack(spacing: 1.5) {
                 Text("0"); Spacer(); Text("6"); Spacer(); Text("12"); Spacer(); Text("18"); Spacer(); Text("23")

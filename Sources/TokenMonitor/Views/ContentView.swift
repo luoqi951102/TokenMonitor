@@ -535,18 +535,20 @@ struct ContentView: View {
                     let ratio = maxTokens > 0 ? Double(tokens) / Double(maxTokens) : 0
                     let isPeak = tokens > 0 && hour == peakHour
                     let isNow = hour == nowHour
-                    // 热力色：弱 = brandFaint，强 = brand，峰值 = brand 全饱和 + 呼吸
-                    VStack(spacing: 1) {
-                        ZStack(alignment: .bottom) {
-                            RoundedRectangle(cornerRadius: 1.5)
-                                .fill(
-                                    tokens == 0
-                                        ? Color.primary.opacity(0.05)
-                                        : Theme.brand.opacity(0.25 + 0.75 * ratio)
-                                )
-                                .frame(width: 6, height: max(3, CGFloat(ratio) * 36))
-                                .animation(.spring(response: 0.4, dampingFraction: 0.75), value: buckets)
-                            // 峰值：顶上加个小亮点（TimelineView 驱动呼吸）
+                    let barHeight = max(3, CGFloat(ratio) * 36)
+                    let barColor = tokens == 0
+                        ? Color.primary.opacity(0.05)
+                        : (Theme.enablesThresholdColors
+                            ? (ratio < 0.33 ? Theme.statusOK.opacity(0.45)
+                                : (ratio < 0.75 ? Theme.statusOK : Theme.statusWarn))
+                            : Theme.brand.opacity(0.25 + 0.75 * ratio))
+                    // 每根柱:固定画布 + bottom 对齐,峰值点 overlay 挂条顶。
+                    // 不用 maxHeight:.infinity 嵌套(布局塌陷致柱子漂移/缺失)。
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(barColor)
+                        .frame(width: 6, height: barHeight)
+                        .frame(height: 42, alignment: .bottom)
+                        .overlay(alignment: .top) {
                             if isPeak {
                                 TimelineView(.periodic(from: Date(), by: 0.2)) { ctx in
                                     let phase = ctx.date.timeIntervalSince1970
@@ -554,23 +556,23 @@ struct ContentView: View {
                                     Circle()
                                         .fill(Theme.brand)
                                         .frame(width: 3, height: 3)
-                                        .offset(y: -max(3, CGFloat(ratio) * 36) / 2 - 4)
+                                        .offset(y: -5)
                                         .opacity(0.4 + 0.6 * phase)
                                 }
                             }
                         }
-                        .frame(maxHeight: .infinity, alignment: .bottom)
-                        // 当前小时加个底部刻度点
-                        if isNow {
-                            Circle()
-                                .fill(Theme.brand.opacity(0.6))
-                                .frame(width: 3, height: 3)
+                        .overlay(alignment: .bottom) {
+                            if isNow {
+                                Circle()
+                                    .fill(Theme.brand.opacity(0.6))
+                                    .frame(width: 3, height: 3)
+                                    .offset(y: 5)
+                            }
                         }
-                    }
-                    .frame(maxHeight: .infinity, alignment: .bottom)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.75), value: buckets)
                 }
             }
-            .frame(height: 46, alignment: .bottom)
+            .frame(height: 42, alignment: .bottom)
 
             // 小时刻度
             HStack(spacing: 2) {
