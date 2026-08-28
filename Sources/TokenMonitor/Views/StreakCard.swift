@@ -18,7 +18,7 @@ struct StreakCard: View {
     @Environment(\.colorScheme) private var colorScheme
 
     private var streakColor: Color {
-        streak.current > 0 ? Color.orange : Color.secondary
+        streak.current > 0 ? Theme.statusWarn : Color.secondary
     }
 
     var body: some View {
@@ -64,14 +64,14 @@ struct StreakCard: View {
                 HStack(spacing: 6) {
                     Image(systemName: streak.activeToday ? "checkmark.seal.fill" : "clock.fill")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(streak.activeToday ? Color.green : Color.secondary)
+                        .foregroundStyle(streak.activeToday ? Theme.statusOK : Color.secondary)
                     Text("今日")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
                     Text(streak.activeToday ? "已使用" : "未开始")
                         .font(Theme.Typography.body.weight(.semibold))
-                        .foregroundStyle(streak.activeToday ? Color.green : Color.secondary)
+                        .foregroundStyle(streak.activeToday ? Theme.statusOK : Color.secondary)
                 }
 
                 // 进度条：中性灰底 + 火苗色填充（克制版，仅作刻度）

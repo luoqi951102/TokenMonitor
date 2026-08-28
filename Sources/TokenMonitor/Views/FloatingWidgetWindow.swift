@@ -230,6 +230,13 @@ final class FloatingWidgetWindow {
         rebuildMenuStates()
     }
 
+    /// 右键菜单切皮肤（SkinManager @Published 驱动浮窗+主面板同步换装）
+    @objc private func setSkin(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let s = Skin(rawValue: raw) else { return }
+        SkinManager.shared.skin = s
+        rebuildMenuStates()
+    }
+
     /// 构建右键菜单
     private func buildMenu(size: Size) -> NSMenu {
         let menu = NSMenu()
@@ -254,6 +261,20 @@ final class FloatingWidgetWindow {
         }
         opacityItem.submenu = opacityMenu
         menu.addItem(opacityItem)
+        menu.addItem(.separator())
+        // 皮肤子菜单：三套风格切换（SkinManager 持久化，主面板同步生效）
+        let skinItem = NSMenuItem(title: "皮肤", action: nil, keyEquivalent: "")
+        let skinMenu = NSMenu()
+        let currentSkin = SkinManager.shared.skin
+        for s in Skin.allCases {
+            let it = NSMenuItem(title: s.displayName, action: #selector(setSkin(_:)), keyEquivalent: "")
+            it.target = self
+            it.representedObject = s.rawValue
+            it.state = s == currentSkin ? .on : .off
+            skinMenu.addItem(it)
+        }
+        skinItem.submenu = skinMenu
+        menu.addItem(skinItem)
         menu.addItem(.separator())
         let openPanel = NSMenuItem(title: "打开完整面板", action: #selector(openMainPanel), keyEquivalent: "")
         openPanel.target = self
@@ -292,16 +313,21 @@ final class FloatingWidgetWindow {
         // 菜单存在 self.menu 上（hosting.view.menu 引用同一个对象）
         guard let menu = self.menu else { return }
         let size = currentSize()
+        let currentSkin = SkinManager.shared.skin
         for item in menu.items {
             if let raw = item.representedObject as? String, let s = Size(rawValue: raw) {
                 item.state = s == size ? .on : .off
             }
-            // 透明度子菜单的勾
+            // 透明度/皮肤子菜单的勾
             if let sub = item.submenu {
                 let current = UserDefaults.standard.object(forKey: "floating_widget_opacity") as? Double ?? 0.92
                 for subItem in sub.items {
                     if let v = subItem.representedObject as? Double {
                         subItem.state = abs(current - v) < 0.01 ? .on : .off
+                    }
+                    // 皮肤子菜单勾选（representedObject 是 String rawValue）
+                    if let raw = subItem.representedObject as? String, let s = Skin(rawValue: raw) {
+                        subItem.state = s == currentSkin ? .on : .off
                     }
                 }
             }

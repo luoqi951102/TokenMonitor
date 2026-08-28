@@ -217,7 +217,12 @@ struct HeroRings: View {
     private func ringLayer(progress: Double, diameter: CGFloat, lineWidth: CGFloat,
                            color: Color, lightColor: Color,
                            breath: Double, flowDeg: Double) -> some View {
-        ZStack {
+        // Aurora 皮肤辉光加强
+        let boost: Double = SkinManager.shared.tokens.enablesGlow ? 1.6 : 1.0
+        let breathAmt = 0.5 + 0.5 * breath
+        let glowOpacity = (0.35 + 0.35 * breathAmt) * boost
+        let glowRadius = (3.0 + 1.5 * breathAmt) * boost
+        return ZStack {
             Circle()
                 .stroke(color.opacity(0.12), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
             Circle()
@@ -232,9 +237,8 @@ struct HeroRings: View {
                     style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                // 同色发光：亮度随呼吸相位脉动（0.35 ↔ 0.7），环"活"的关键
-                .shadow(color: color.opacity(0.35 + 0.35 * (0.5 + 0.5 * breath)),
-                        radius: 3.0 + 1.5 * (0.5 + 0.5 * breath), x: 0, y: 0)
+                // 同色发光：亮度随呼吸相位脉动
+                .shadow(color: color.opacity(glowOpacity), radius: glowRadius, x: 0, y: 0)
                 .animation(.spring(response: 0.7, dampingFraction: 0.75), value: progress)
         }
         .frame(width: diameter, height: diameter)
@@ -505,6 +509,19 @@ struct CompositionBar: View {
 struct HourlyHeatmapMini: View {
     let buckets: [HourlyBucket]
 
+    /// 热力条颜色: Instrument 阈值三段(空闲灰/常规绿/高负载红->黄),
+    /// 其他皮肤 brand 强度渐变
+    private func heatmapColor(tokens: Int, ratio: Double) -> Color {
+        if tokens == 0 { return Color.primary.opacity(0.05) }
+        if Theme.enablesThresholdColors {
+            // stats 式阈值: <33% 低活跃暗绿, <75% 常规绿, >=75% 高负载黄
+            if ratio < 0.33 { return Theme.statusOK.opacity(0.45) }
+            if ratio < 0.75 { return Theme.statusOK }
+            return Theme.statusWarn
+        }
+        return Theme.brand.opacity(0.25 + 0.75 * ratio)
+    }
+
     private var maxTokens: Int { buckets.map(\.tokens).max() ?? 1 }
     private var peakHour: Int? { buckets.max { $0.tokens < $1.tokens }?.hour }
     private var nowHour: Int { Calendar.current.component(.hour, from: Date()) }
@@ -536,11 +553,7 @@ struct HourlyHeatmapMini: View {
                     VStack(spacing: 1) {
                         ZStack(alignment: .bottom) {
                             RoundedRectangle(cornerRadius: 1)
-                                .fill(
-                                    tokens == 0
-                                        ? Color.primary.opacity(0.05)
-                                        : Theme.brand.opacity(0.25 + 0.75 * ratio)
-                                )
+                                .fill(heatmapColor(tokens: tokens, ratio: ratio))
                                 .frame(width: 4.5, height: max(2, CGFloat(ratio) * 26))
                                 .animation(.spring(response: 0.4, dampingFraction: 0.75), value: buckets)
                             if isPeak {

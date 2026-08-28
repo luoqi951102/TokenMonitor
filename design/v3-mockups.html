@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>TokenMonitor 3.0 UI 方案对比</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, "SF Pro Text", "PingFang SC", sans-serif;
+    background:#050507; color:#f4f4f6; min-height:100vh;
+    padding:24px; transition:background .3s;
+  }
+  /* ===== 顶部切换 ===== */
+  .switcher { display:flex; gap:8px; justify-content:center; margin-bottom:28px; }
+  .switcher button {
+    background:rgba(255,255,255,.05); color:#9c9c9d; border:1px solid rgba(255,255,255,.08);
+    padding:8px 20px; border-radius:8px; cursor:pointer; font-size:13px; font-weight:500;
+    transition:all .2s; font-family:inherit;
+  }
+  .switcher button:hover { color:#f4f4f6; }
+  .switcher button.active { background:rgba(255,255,255,.12); color:#f4f4f6; border-color:rgba(255,255,255,.2); }
+  .compare-all .stage { display:none; }
+  body.comparing .stage { display:flex !important; }
+  body.comparing .stage > .panel-wrap { transform:scale(.92); }
+  .stage { display:none; justify-content:center; gap:40px; align-items:flex-start; }
+  .stage.visible { display:flex; }
+  .panel-wrap { display:flex; flex-direction:column; align-items:center; gap:14px; }
+  .panel-label { font-size:12px; color:#6a6b6c; letter-spacing:.5px; }
+  .panel-label b { color:#cdcdcd; font-weight:600; margin-right:6px; }
+
+  .mono { font-family:"SF Mono", ui-monospace, Menlo, monospace; }
+
+  /* ============================================================
+     方案 A · Crystalline — Raycast 原生暗色
+     ============================================================ */
+  .crystal-stage { background:#050507; }
+  .crystal {
+    width:360px; background:#0d0d0d; border:1px solid rgba(255,255,255,.08);
+    border-radius:14px; padding:16px; color:#f4f4f6;
+  }
+  .crystal .head { display:flex; align-items:baseline; gap:8px; }
+  .crystal .head .big { font-size:30px; font-weight:700; letter-spacing:-.5px; }
+  .crystal .head .unit { font-size:12px; color:#6a6b6c; }
+  .crystal .head .delta { margin-left:auto; font-size:11px; color:#59d499; font-weight:600; }
+  .crystal .sub { font-size:10px; color:#6a6b6c; margin-top:2px; }
+  .crystal .grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:14px; }
+  .crystal .cell {
+    background:#121212; border:1px solid rgba(255,255,255,.06); border-radius:10px; padding:10px 12px;
+  }
+  .crystal .cell .k { font-size:9px; color:#6a6b6c; text-transform:uppercase; letter-spacing:.8px; }
+  .crystal .cell .v { font-size:17px; font-weight:600; margin-top:3px; }
+  .crystal .cell .v small { font-size:10px; color:#6a6b6c; font-weight:400; }
+  .crystal .spark { margin-top:14px; background:#121212; border:1px solid rgba(255,255,255,.06); border-radius:10px; padding:10px 12px; }
+  .crystal .spark .k { font-size:9px; color:#6a6b6c; letter-spacing:.8px; }
+  .crystal .bars { display:flex; align-items:flex-end; gap:3px; height:38px; margin-top:8px; }
+  .crystal .bars i { flex:1; background:#57c1ff; opacity:.75; border-radius:2px 2px 0 0; }
+  .crystal .bars i.hot { background:#59d499; opacity:.95; }
+  .crystal .rows { margin-top:14px; display:flex; flex-direction:column; gap:7px; }
+  .crystal .row { display:flex; align-items:center; gap:8px; font-size:11px; }
+  .crystal .row .dot { width:6px; height:6px; border-radius:50%; }
+  .crystal .row .name { color:#cdcdcd; }
+  .crystal .row .fill { flex:1; height:3px; background:rgba(255,255,255,.06); border-radius:2px; overflow:hidden; }
+  .crystal .row .fill i { display:block; height:100%; border-radius:2px; }
+  .crystal .row .val { color:#9c9c9d; font-size:10px; }
+
+  /* ============================================================
+     方案 B · Aurora — Linear 辉光玻璃
+     ============================================================ */
+  .aurora-stage { background:radial-gradient(1200px 600px at 20% 0%, #17132b 0%, #0a0a0f 55%), #0a0a0f; }
+  .aurora {
+    width:360px; position:relative; border-radius:18px; padding:18px;
+    background:rgba(255,255,255,.045);
+    backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
+    border:1px solid rgba(255,255,255,.09); color:#f0f0f5;
+    box-shadow:0 24px 60px rgba(0,0,0,.5);
+    overflow:hidden;
+  }
+  /* 玻璃顶部受光边缘 */
+  .aurora::before {
+    content:""; position:absolute; top:0; left:8%; right:8%; height:1px;
+    background:linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent);
+  }
+  /* 氛围光斑 */
+  .aurora .glow1 { position:absolute; width:220px; height:220px; border-radius:50%;
+    background:radial-gradient(circle, rgba(124,92,255,.32), transparent 65%);
+    top:-70px; left:-60px; filter:blur(30px); animation:breath 6s ease-in-out infinite; }
+  .aurora .glow2 { position:absolute; width:180px; height:180px; border-radius:50%;
+    background:radial-gradient(circle, rgba(77,107,254,.22), transparent 65%);
+    bottom:-60px; right:-50px; filter:blur(28px); animation:breath 7s ease-in-out 1s infinite; }
+  @keyframes breath { 0%,100%{opacity:.75} 50%{opacity:1} }
+  .aurora .inner { position:relative; z-index:1; }
+  .aurora .head { display:flex; align-items:center; gap:10px; }
+  .aurora .ring { position:relative; width:84px; height:84px; }
+  .aurora .ring svg { transform:rotate(-90deg); }
+  .aurora .ring .c { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .aurora .ring .c b { font-size:15px; font-weight:700; }
+  .aurora .ring .c span { font-size:8px; color:#9c9caf; }
+  .aurora .meta { flex:1; }
+  .aurora .meta .t { font-size:10px; color:#9c9caf; text-transform:uppercase; letter-spacing:1px; }
+  .aurora .meta .rate { font-size:20px; font-weight:700; margin-top:2px; }
+  .aurora .meta .rate small { font-size:10px; color:#9c9caf; font-weight:400; }
+  .aurora .meta .qbar { height:4px; background:rgba(255,255,255,.08); border-radius:3px; margin-top:8px; overflow:hidden; }
+  .aurora .meta .qbar i { display:block; height:100%; width:64%; border-radius:3px;
+    background:linear-gradient(90deg,#7c5cff,#4d6bfe); box-shadow:0 0 8px rgba(124,92,255,.7);
+    animation:qg 3s ease-in-out infinite; }
+  @keyframes qg { 0%,100%{ filter:brightness(.9)} 50%{ filter:brightness(1.25)} }
+  .aurora .bento { display:grid; grid-template-columns:1.5fr 1fr; gap:8px; margin-top:14px; }
+  .aurora .bcard { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.07);
+    border-radius:12px; padding:11px 12px; position:relative; overflow:hidden; }
+  .aurora .bcard::before { content:""; position:absolute; top:0; left:10%; right:10%; height:1px;
+    background:linear-gradient(90deg, transparent, rgba(255,255,255,.25), transparent); }
+  .aurora .bcard .k { font-size:9px; color:#9c9caf; letter-spacing:.6px; }
+  .aurora .bcard .v { font-size:16px; font-weight:650; margin-top:4px; }
+  .aurora .bcard .v small { font-size:9px; color:#9c9caf; }
+  .aurora .area { margin-top:6px; }
+  .aurora .bcard .models { margin-top:6px; display:flex; flex-direction:column; gap:5px; }
+  .aurora .mrow { display:flex; align-items:center; gap:5px; font-size:10px; }
+  .aurora .mrow .dot { width:5px; height:5px; border-radius:50%; }
+  .aurora .mrow .n { color:#cdcdcd; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .aurora .mrow .pc { color:#9c9caf; }
+  .aurora .beam { position:absolute; inset:0; border-radius:18px; pointer-events:none;
+    border:1px solid transparent; }
+  .aurora .beam::after { content:""; position:absolute; inset:-1px; border-radius:18px; padding:1px;
+    background:conic-gradient(from var(--a,0deg), transparent 0deg, transparent 290deg, rgba(124,92,255,.9) 340deg, transparent 360deg);
+    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor; mask-composite:exclude;
+    animation:spin 7s linear infinite; }
+  @property --a { syntax:'<angle>'; initial-value:0deg; inherits:false; }
+  @keyframes spin { to { --a:360deg; } }
+
+  /* ============================================================
+     方案 C · Instrument — Stats 仪表密度派
+     ============================================================ */
+  .inst-stage { background:#1a1a1e; }
+  .inst-menubar { width:360px; background:rgba(28,28,32,.92); border-radius:8px; padding:0 12px;
+    height:26px; display:flex; align-items:center; gap:8px; font-size:11px; color:#e8e8ed;
+    border:1px solid rgba(255,255,255,.06); margin-bottom:10px; }
+  .inst-menubar .mb-bars { display:flex; align-items:flex-end; gap:1.5px; height:12px; }
+  .inst-menubar .mb-bars i { width:3px; background:#30d158; border-radius:1px; }
+  .inst-menubar .mb-val { font-weight:600; }
+  .inst-menubar .sep { color:#5a5a5f; }
+  .inst {
+    width:360px; background:rgba(24,24,28,.96); border:1px solid rgba(255,255,255,.07);
+    border-radius:10px; padding:0; color:#e8e8ed; overflow:hidden; font-size:11px;
+  }
+  .inst .sec { padding:9px 12px; border-bottom:1px solid rgba(255,255,255,.05); }
+  .inst .sec:last-child { border-bottom:none; }
+  .inst .sec-title { font-size:9px; color:#8e8e93; text-transform:uppercase; letter-spacing:1px; margin-bottom:7px;
+    display:flex; justify-content:space-between; }
+  .inst .sec-title .r { color:#636366; letter-spacing:0; text-transform:none; }
+  .inst .gauge-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .inst .gauge-row:last-child { margin-bottom:0; }
+  .inst .gauge-row .dot { width:7px; height:7px; border-radius:2px; }
+  .inst .gauge-row .nm { width:118px; color:#d1d1d6; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .inst .gauge-row .track { flex:1; height:5px; background:rgba(255,255,255,.06); border-radius:3px; overflow:hidden; }
+  .inst .gauge-row .track i { display:block; height:100%; border-radius:3px; }
+  .inst .gauge-row .vv { width:52px; text-align:right; font-weight:600; }
+  .inst .kpis { display:flex; gap:0; }
+  .inst .kpi { flex:1; text-align:center; }
+  .inst .kpi + .kpi { border-left:1px solid rgba(255,255,255,.05); }
+  .inst .kpi b { display:block; font-size:15px; font-weight:650; }
+  .inst .kpi span { font-size:8.5px; color:#8e8e93; }
+  .inst .wave { display:flex; align-items:flex-end; gap:2px; height:30px; margin-top:2px; }
+  .inst .wave i { flex:1; border-radius:1.5px 1.5px 0 0; }
+  .inst .legend { display:flex; gap:10px; margin-top:6px; font-size:9px; color:#8e8e93; }
+  .inst .legend i { display:inline-block; width:6px; height:6px; border-radius:2px; margin-right:3px; vertical-align:middle; }
+  .ok { color:#30d158; } .warn { color:#ffd60a; } .hot { color:#ff453a; }
+</style>
+</head>
+<body>
+
+<div class="switcher">
+  <button data-t="crystal" class="active">A · Crystalline 原生暗色</button>
+  <button data-t="aurora">B · Aurora 辉光玻璃</button>
+  <button data-t="inst">C · Instrument 仪表密度</button>
+  <button data-t="all">⇔ 并排对比</button>
+</div>
+
+<!-- ============ A ============ -->
+<div class="stage crystal-stage visible" id="st-crystal">
+  <div class="panel-wrap">
+    <div class="crystal">
+      <div class="head">
+        <span class="big mono">218.4M</span><span class="unit">tokens 今日</span>
+        <span class="delta">▲ 39.7%</span>
+      </div>
+      <div class="sub">较上周同期 · 已连续 12 天 <span style="color:#ff9f0a">🔥</span> · 燃烧速率 3.2M/h</div>
+      <div class="grid">
+        <div class="cell"><div class="k">Claude Code</div><div class="v mono">62.1M <small>28%</small></div></div>
+        <div class="cell"><div class="k">ZCode</div><div class="v mono">156.3M <small>72%</small></div></div>
+        <div class="cell"><div class="k">工具调用</div><div class="v mono">1,284 <small>次</small></div></div>
+        <div class="cell"><div class="k">消息</div><div class="v mono">3,672 <small>条</small></div></div>
+      </div>
+      <div class="spark">
+        <div class="k">近 14 天趋势</div>
+        <div class="bars">
+          <i style="height:30%"></i><i style="height:45%"></i><i style="height:25%"></i><i style="height:60%"></i>
+          <i style="height:52%"></i><i style="height:70%"></i><i style="height:48%"></i><i style="height:82%"></i>
+          <i style="height:64%"></i><i style="height:90%"></i><i style="height:74%"></i><i style="height:58%"></i>
+          <i style="height:88%"></i><i class="hot" style="height:100%"></i>
+        </div>
+      </div>
+      <div class="rows">
+        <div class="row"><span class="dot" style="background:#7c5cff"></span><span class="name">GLM-5.3 · 智谱</span><span class="fill"><i style="width:100%;background:#7c5cff"></i></span><span class="val mono">92.4M</span></div>
+        <div class="row"><span class="dot" style="background:#4d6bfe"></span><span class="name">deepseek-v4 · DeepSeek 原厂</span><span class="fill"><i style="width:74%;background:#4d6bfe"></i></span><span class="val mono">68.2M</span></div>
+        <div class="row"><span class="dot" style="background:#59d499"></span><span class="name">glm-5.2 · 浙算</span><span class="fill"><i style="width:45%;background:#59d499"></i></span><span class="val mono">41.7M</span></div>
+      </div>
+    </div>
+    <div class="panel-label"><b>A</b>Crystalline · 表面阶梯 + hairline，零阴影零辉光</div>
+  </div>
+</div>
+
+<!-- ============ B ============ -->
+<div class="stage aurora-stage" id="st-aurora">
+  <div class="panel-wrap">
+    <div class="aurora">
+      <div class="glow1"></div><div class="glow2"></div><div class="beam"></div>
+      <div class="inner">
+        <div class="head">
+          <div class="ring">
+            <svg width="84" height="84" viewBox="0 0 84 84">
+              <defs>
+                <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#7c5cff"/><stop offset="1" stop-color="#4d6bfe"/>
+                </linearGradient>
+              </defs>
+              <circle cx="42" cy="42" r="36" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="7"/>
+              <circle cx="42" cy="42" r="36" fill="none" stroke="url(#g1)" stroke-width="7"
+                stroke-linecap="round" stroke-dasharray="226" stroke-dashoffset="81"
+                style="filter:drop-shadow(0 0 5px rgba(124,92,255,.8))"/>
+              <circle cx="42" cy="42" r="26" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="5"/>
+              <circle cx="42" cy="42" r="26" fill="none" stroke="#59d499" stroke-width="5"
+                stroke-linecap="round" stroke-dasharray="163" stroke-dashoffset="52"
+                style="filter:drop-shadow(0 0 4px rgba(89,212,153,.7))"/>
+            </svg>
+            <div class="c"><b class="mono">218M</b><span>总量</span></div>
+          </div>
+          <div class="meta">
+            <div class="t">燃烧速率</div>
+            <div class="rate mono">3.2M <small>/时 · 峰值 5.1M</small></div>
+            <div class="qbar"><i></i></div>
+            <div class="t" style="margin-top:5px">今日配额 64% · 充裕</div>
+          </div>
+        </div>
+        <div class="bento">
+          <div class="bcard">
+            <div class="k">近 14 天 · 消耗趋势</div>
+            <div class="v mono">▲ 39.7% <small>vs 上周</small></div>
+            <div class="area">
+              <svg width="100%" height="40" viewBox="0 0 200 40" preserveAspectRatio="none">
+                <defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#7c5cff" stop-opacity=".5"/>
+                  <stop offset="1" stop-color="#7c5cff" stop-opacity="0"/>
+                </linearGradient></defs>
+                <path d="M0,32 L15,28 L30,34 L45,22 L60,25 L75,16 L90,24 L105,12 L120,18 L135,8 L150,14 L165,20 L180,7 L200,4 L200,40 L0,40 Z" fill="url(#ag)"/>
+                <path d="M0,32 L15,28 L30,34 L45,22 L60,25 L75,16 L90,24 L105,12 L120,18 L135,8 L150,14 L165,20 L180,7 L200,4"
+                  fill="none" stroke="#9d85ff" stroke-width="1.5" style="filter:drop-shadow(0 0 3px rgba(124,92,255,.9))"/>
+              </svg>
+            </div>
+          </div>
+          <div class="bcard">
+            <div class="k">模型占比</div>
+            <div class="models">
+              <div class="mrow"><span class="dot" style="background:#7c5cff"></span><span class="n">GLM-5.3</span><span class="pc mono">42%</span></div>
+              <div class="mrow"><span class="dot" style="background:#4d6bfe"></span><span class="n">deepseek-v4</span><span class="pc mono">31%</span></div>
+              <div class="mrow"><span class="dot" style="background:#59d499"></span><span class="n">glm-5.2</span><span class="pc mono">19%</span></div>
+              <div class="mrow"><span class="dot" style="background:#ff9f0a"></span><span class="n">sonnet-4.5</span><span class="pc mono">8%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="panel-label"><b>B</b>Aurora · 辉光光斑 + 玻璃边缘高光 + bento + 边框流光</div>
+  </div>
+</div>
+
+<!-- ============ C ============ -->
+<div class="stage inst-stage" id="st-inst">
+  <div class="panel-wrap">
+    <div>
+      <div class="inst-menubar">
+        <span style="color:#30d158">◆</span>
+        <span class="mb-val mono">218.4M</span>
+        <span class="mb-bars">
+          <i style="height:30%"></i><i style="height:45%"></i><i style="height:25%"></i><i style="height:60%"></i>
+          <i style="height:52%"></i><i style="height:82%"></i><i style="height:100%"></i>
+        </span>
+        <span class="sep">|</span>
+        <span class="mono" style="color:#9c9c9d">3.2M/h</span>
+      </div>
+      <div class="inst">
+        <div class="sec">
+          <div class="kpis">
+            <div class="kpi"><b class="mono">218.4M</b><span>今日 TOKEN</span></div>
+            <div class="kpi"><b class="mono">3,672</b><span>消息</span></div>
+            <div class="kpi"><b class="mono">1,284</b><span>工具</span></div>
+            <div class="kpi"><b class="mono ok">12天</b><span>连续</span></div>
+          </div>
+        </div>
+        <div class="sec">
+          <div class="sec-title">模型用量 <span class="r">本周 891M · ▲39.7%</span></div>
+          <div class="gauge-row">
+            <span class="dot" style="background:#7c5cff"></span><span class="nm">GLM-5.3 · 智谱官方</span>
+            <span class="track"><i style="width:100%;background:#7c5cff"></i></span><span class="vv mono">92.4M</span>
+          </div>
+          <div class="gauge-row">
+            <span class="dot" style="background:#4d6bfe"></span><span class="nm">deepseek-v4 · 原厂</span>
+            <span class="track"><i style="width:74%;background:#4d6bfe"></i></span><span class="vv mono">68.2M</span>
+          </div>
+          <div class="gauge-row">
+            <span class="dot" style="background:#59d499"></span><span class="nm">glm-5.2 · 浙算</span>
+            <span class="track"><i style="width:45%;background:#59d499"></i></span><span class="vv mono">41.7M</span>
+          </div>
+          <div class="gauge-row">
+            <span class="dot" style="background:#ff9f0a"></span><span class="nm">sonnet-4.5 · Claude</span>
+            <span class="track"><i style="width:17%;background:#ff9f0a"></i></span><span class="vv mono">16.1M</span>
+          </div>
+        </div>
+        <div class="sec">
+          <div class="sec-title">今日逐时消耗 <span class="r">峰值 15:00</span></div>
+          <div class="wave">
+            <i style="height:8%;background:#3a3a3f"></i><i style="height:5%;background:#3a3a3f"></i>
+            <i style="height:4%;background:#3a3a3f"></i><i style="height:6%;background:#3a3a3f"></i>
+            <i style="height:10%;background:#3a3a3f"></i><i style="height:22%;background:#248a3d"></i>
+            <i style="height:38%;background:#30d158"></i><i style="height:55%;background:#30d158"></i>
+            <i style="height:47%;background:#30d158"></i><i style="height:66%;background:#30d158"></i>
+            <i style="height:80%;background:#30d158"></i><i style="height:72%;background:#30d158"></i>
+            <i style="height:88%;background:#30d158"></i><i style="height:100%;background:#30d158"></i>
+            <i style="height:76%;background:#30d158"></i><i style="height:60%;background:#30d158"></i>
+            <i style="height:68%;background:#30d158"></i><i style="height:52%;background:#30d158"></i>
+            <i style="height:40%;background:#248a3d"></i><i style="height:34%;background:#248a3d"></i>
+            <i style="height:26%;background:#248a3d"></i><i style="height:18%;background:#3a3a3f"></i>
+            <i style="height:12%;background:#3a3a3f"></i><i style="height:7%;background:#3a3a3f"></i>
+          </div>
+          <div class="legend">
+            <span><i style="background:#30d158"></i>常规</span>
+            <span><i style="background:#248a3d"></i>低活跃</span>
+            <span><i style="background:#3a3a3f"></i>空闲</span>
+            <span style="margin-left:auto">阈值: <b class="ok mono">正常</b></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="panel-label"><b>C</b>Instrument · 菜单栏迷你图 + 高密度行仪表 + 阈值着色</div>
+  </div>
+</div>
+
+<script>
+  const btns = document.querySelectorAll('.switcher button');
+  const stages = { crystal: document.getElementById('st-crystal'),
+                   aurora: document.getElementById('st-aurora'),
+                   inst: document.getElementById('st-inst') };
+  function show(key) {
+    btns.forEach(b => b.classList.toggle('active', b.dataset.t === key));
+    document.body.classList.toggle('comparing', key === 'all');
+    Object.entries(stages).forEach(([k, el]) => el.classList.toggle('visible', key === 'all' || k === key));
+  }
+  btns.forEach(b => b.addEventListener('click', () => show(b.dataset.t)));
+  show('crystal');
+</script>
+</body>
+</html>

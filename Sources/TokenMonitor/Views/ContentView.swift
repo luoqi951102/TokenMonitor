@@ -11,6 +11,7 @@ struct ContentView: View {
     let onClose: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    @ObservedObject private var skinMgr = SkinManager.shared
     @State private var tab: Tab = .overview
     @State private var hoveringModelID: String? = nil
 
@@ -167,6 +168,25 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
             .help("显示/隐藏桌面小窗")
+
+            // 皮肤切换：Menu 弹三套风格
+            Menu {
+                ForEach(Skin.allCases) { s in
+                    Button(action: { SkinManager.shared.skin = s }) {
+                        if s == SkinManager.shared.skin {
+                            Label(s.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(s.displayName)
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: skinMgr.skin.icon)
+                    .foregroundStyle(Theme.brand)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("切换皮肤")
 
             Button(action: onOpenSettings) {
                 Image(systemName: "gearshape")

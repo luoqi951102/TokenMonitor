@@ -23,6 +23,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 header
                 syncSection
+                appearanceSection
                 loginItemSection
                 databaseSection
                 historyFixSection
@@ -513,6 +514,108 @@ struct SettingsView: View {
     // MARK: - Login Item（开机自启动）
 
     @StateObject private var loginItem = LoginItemStore.shared
+
+    // MARK: - 外观（3.0 皮肤系统）
+
+    @ViewBuilder
+    private var appearanceSection: some View {
+        card(title: "外观", icon: "paintpalette") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("三套皮肤即时切换，浮窗与主面板同步生效，重启后保持。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 8) {
+                    ForEach(Skin.allCases) { s in
+                        skinPreviewCard(s)
+                    }
+                }
+            }
+        }
+    }
+
+    /// 单个皮肤预览卡：迷你缩略示意 + 名称 + 勾选态
+    private func skinPreviewCard(_ s: Skin) -> some View {
+        let isSelected = SkinManager.shared.skin == s
+        let tokens = s.tokens
+        return Button(action: {
+            withAnimation(.easeOut(duration: 0.2)) {
+                SkinManager.shared.skin = s
+            }
+        }) {
+            VStack(alignment: .leading, spacing: 6) {
+                // 迷你示意：surface 底 + brand 条 + 两个语义色点
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(tokens.surface(for: .dark))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .strokeBorder(tokens.hairline, lineWidth: 1)
+                        )
+                    VStack(alignment: .leading, spacing: 3) {
+                        RoundedRectangle(cornerRadius: 1.5)
+                            .fill(tokens.brandGradient)
+                            .frame(width: 34, height: 5)
+                        HStack(spacing: 3) {
+                            Circle().fill(tokens.tokenCacheRead).frame(width: 4, height: 4)
+                            Circle().fill(tokens.tokenCacheWrite).frame(width: 4, height: 4)
+                            Circle().fill(tokens.tokenInput).frame(width: 4, height: 4)
+                        }
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(tokens.hairline)
+                            .frame(width: 46, height: 3)
+                    }
+                    .padding(.leading, 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                    // Aurora 光斑示意
+                    if tokens.enablesGlow {
+                        Circle()
+                            .fill(tokens.brand.opacity(0.4))
+                            .frame(width: 22, height: 22)
+                            .blur(radius: 6)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                            .padding(4)
+                    }
+                    // Instrument 阈值色示意
+                    if tokens.enablesThresholdColors {
+                        HStack(spacing: 2) {
+                            Circle().fill(tokens.statusOK).frame(width: 3, height: 3)
+                            Circle().fill(tokens.statusWarn).frame(width: 3, height: 3)
+                            Circle().fill(tokens.statusHot).frame(width: 3, height: 3)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                        .padding(5)
+                    }
+                }
+                .frame(height: 44)
+
+                HStack(spacing: 3) {
+                    Image(systemName: s.icon)
+                        .font(.system(size: 9))
+                        .foregroundStyle(isSelected ? Theme.brand : Color.secondary)
+                    Text(s.displayName.split(separator: "·").first.map { String($0).trimmingCharacters(in: .whitespaces) } ?? s.rawValue)
+                        .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+                        .foregroundStyle(isSelected ? Theme.brand : Color.primary)
+                    Spacer()
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.brand)
+                    }
+                }
+            }
+            .padding(8)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(isSelected ? Theme.brand.opacity(0.08) : Color.primary.opacity(0.03))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(isSelected ? Theme.brand.opacity(0.5) : Color.primary.opacity(0.08), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
 
     @ViewBuilder
     private var loginItemSection: some View {

@@ -16,26 +16,24 @@ struct FloatingWidgetView: View {
     @ObservedObject var viewModel: DashboardViewModel
     let size: FloatingWidgetWindow.Size
     @Environment(\.colorScheme) private var colorScheme
+    @ObservedObject private var skinMgr = SkinManager.shared
 
     // 背景不透明度（用户可调，存 UserDefaults）
     @State private var opacity: Double = UserDefaults.standard.object(forKey: "floating_widget_opacity") as? Double ?? 0.92
 
     var body: some View {
         ZStack {
-            // 实色背景（比 ultraThinMaterial 更可读）
-            // 圆角对齐 Theme.Radius.panel，跟描边、阴影口径统一
+            // 皮肤 surface 底色（Crystalline 近黑阶梯 / Aurora 紫黑 / Instrument 系统色）
             RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
-                .fill(backgroundMaterial)
+                .fill(Theme.windowBackground(for: colorScheme).opacity(opacity))
                 .overlay {
                     RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
-                        .strokeBorder(
-                            colorScheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.06),
-                            lineWidth: 1
-                        )
+                        .strokeBorder(Theme.panelBorder(for: colorScheme), lineWidth: 1)
                 }
-
-            // 不再叠顶部品牌光晕（Slack/Notion 风，反 Apple HIG）；
-            // 把"光感"交给整张面板的材质 + 边界 hairline 自然承担。
+                .overlay {
+                    // Aurora 辉光光斑：两个彩色 blur 圆呼吸（mockup glow1/glow2）
+                    if Theme.enablesGlow { auroraGlows }
+                }
 
             content
         }
@@ -47,11 +45,37 @@ struct FloatingWidgetView: View {
         }
     }
 
-    private var backgroundMaterial: Color {
-        let base = colorScheme == .dark
-            ? Color(red: 0.10, green: 0.11, blue: 0.14)
-            : Color(red: 0.96, green: 0.97, blue: 1.0)
-        return base.opacity(opacity)
+    /// Aurora 皮肤的氛围光斑（紫 + 蓝，低频呼吸）
+    @ViewBuilder
+    private var auroraGlows: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            Circle()
+                .fill(
+                    RadialGradient(colors: [Theme.brand.opacity(0.32), .clear],
+                                   center: .center, startRadius: 0, endRadius: 110)
+                )
+                .frame(width: 220, height: 220)
+                .position(x: w * 0.12, y: 30)
+                .blur(radius: 28)
+                .onAppear { startBreath() }
+            Circle()
+                .fill(
+                    RadialGradient(colors: [Color(red: 0.30, green: 0.42, blue: 1.0).opacity(0.22), .clear],
+                                   center: .center, startRadius: 0, endRadius: 90)
+                )
+                .frame(width: 180, height: 180)
+                .position(x: w * 0.95, y: geo.size.height - 20)
+                .blur(radius: 26)
+        }
+        .allowsHitTesting(false)
+    }
+
+    @State private var glowPhase: Bool = false
+    private func startBreath() {
+        withAnimation(.easeInOut(duration: 6).repeatForever(autoreverses: true)) {
+            glowPhase = true
+        }
     }
 
     @ViewBuilder
@@ -137,10 +161,10 @@ private struct SourceSwitcher: View {
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
                         .background(
-                            ZStack {
+                            Group {
                                 if isSelected {
                                     RoundedRectangle(cornerRadius: 5)
-                                        .fill(Theme.brandDark)
+                                        .fill(Theme.brand.opacity(0.85))
                                         .matchedGeometryEffect(id: "sourceBg", in: ns)
                                 }
                             }
@@ -582,11 +606,11 @@ private struct MediumContent: View {
                 VStack(spacing: 0) {
                     Image(systemName: viewModel.streak.current > 0 ? "flame.fill" : "flame")
                         .font(.system(size: 13))
-                        .foregroundStyle(viewModel.streak.current > 0 ? Color.orange : Color.gray.opacity(0.5))
+                        .foregroundStyle(viewModel.streak.current > 0 ? Theme.statusWarn : Color.secondary.opacity(0.4))
                     Text("\(viewModel.streak.current)")
                         .font(.system(size: 13, weight: .bold, design: .rounded))
                         .monospacedDigit()
-                        .foregroundStyle(viewModel.streak.current > 0 ? Color.orange : Color.secondary)
+                        .foregroundStyle(viewModel.streak.current > 0 ? Theme.statusWarn : Color.secondary)
                     Text("天")
                         .font(.system(size: 8))
                         .foregroundStyle(.secondary)
@@ -746,11 +770,11 @@ private struct LargeContent: View {
                 VStack(spacing: 0) {
                     Image(systemName: viewModel.streak.current > 0 ? "flame.fill" : "flame")
                         .font(.system(size: 14))
-                        .foregroundStyle(viewModel.streak.current > 0 ? Color.orange : Color.gray.opacity(0.5))
+                        .foregroundStyle(viewModel.streak.current > 0 ? Theme.statusWarn : Color.secondary.opacity(0.4))
                     Text("\(viewModel.streak.current)")
                         .font(.system(size: 15, weight: .bold, design: .rounded))
                         .monospacedDigit()
-                        .foregroundStyle(viewModel.streak.current > 0 ? Color.orange : Color.secondary)
+                        .foregroundStyle(viewModel.streak.current > 0 ? Theme.statusWarn : Color.secondary)
                     Text("/ \(viewModel.streak.longest) 天")
                         .font(.system(size: 8))
                         .foregroundStyle(.tertiary)
@@ -794,8 +818,8 @@ private struct LargeContent: View {
                     )
             )
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            // Linear 风格边框流光：品牌色光束沿卡片边框匀速旋转
-            .borderBeam(color: Theme.brand, cornerRadius: 14, speed: 7.0)
+            // 边框流光仅 Aurora 皮肤启用（BorderBeam modifier）
+            .modifier(ConditionalBorderBeam(enabled: Theme.enablesBorderBeam, color: Theme.brand))
             // 轻微浮动：整卡 ±1.5pt 8s 正弦上下漂（跟 Hero 呼吸不同频，叠加更自然）
             .modifier(GentleFloat(amplitude: 1.5, period: 8.0))
             .padding(.horizontal, 16)
@@ -1000,6 +1024,23 @@ struct GentleFloat: ViewModifier {
             let t = ctx.date.timeIntervalSinceReferenceDate
             let y = amplitude * CGFloat(sin(2 * .pi * t / period))
             content.offset(y: y)
+        }
+    }
+}
+
+// MARK: - ConditionalBorderBeam（皮肤开关包装）
+//
+// enabled=false（Crystalline/Instrument）时不叠加流光层，保持克制观感。
+
+struct ConditionalBorderBeam: ViewModifier {
+    let enabled: Bool
+    let color: Color
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.borderBeam(color: color, cornerRadius: 14, speed: 7.0)
+        } else {
+            content
         }
     }
 }
