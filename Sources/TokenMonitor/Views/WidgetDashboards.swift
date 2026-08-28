@@ -548,50 +548,60 @@ struct HourlyHeatmapMini: View {
                 }
             }
 
-            HStack(alignment: .bottom, spacing: 1.5) {
-                ForEach(0..<24, id: \.self) { hour in
-                    let tokens = buckets.first { $0.hour == hour }?.tokens ?? 0
-                    let ratio = maxTokens > 0 ? Double(tokens) / Double(maxTokens) : 0
-                    let isPeak = tokens > 0 && hour == peakHour
-                    let isNow = hour == nowHour
-                    let barHeight = max(2, CGFloat(ratio) * 26)
-                    // 每根柱:固定画布高 30 + bottom 对齐,峰值点 overlay 挂条顶。
-                    // 不用 maxHeight:.infinity 嵌套(布局塌陷致柱子漂移/缺失)。
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(heatmapColor(tokens: tokens, ratio: ratio))
-                        .frame(width: 4.5, height: barHeight)
-                        .frame(height: 30, alignment: .bottom)
-                        .overlay(alignment: .top) {
-                            if isPeak {
-                                TimelineView(.periodic(from: Date(), by: 0.2)) { ctx in
-                                    let phase = ctx.date.timeIntervalSince1970
-                                        .truncatingRemainder(dividingBy: 2.0) / 2.0
-                                    Circle()
-                                        .fill(Theme.brand)
-                                        .frame(width: 2.5, height: 2.5)
-                                        .offset(y: -4)
-                                        .opacity(0.4 + 0.6 * phase)
-                                }
-                            }
+            // Canvas 显式绘制：24 格数学等分，彻底绕开 SwiftUI 嵌套布局的
+            // 塌陷/错位问题（此前柱子被画到数组索引位置且刻度漂移 2-3 小时）。
+            // TimelineView 0.2s 重绘驱动峰值呼吸点。
+            TimelineView(.periodic(from: .now, by: 0.2)) { ctx in
+                Canvas { context, size in
+                    let slot = size.width / 24
+                    let barW: CGFloat = min(6, slot - 2)
+                    let drawH: CGFloat = 26
+                    let peak = peakHour
+                    for hour in 0..<24 {
+                        let tokens = buckets.first { $0.hour == hour }?.tokens ?? 0
+                        let ratio = maxTokens > 0 ? Double(tokens) / Double(maxTokens) : 0
+                        let h = max(2, CGFloat(ratio) * drawH)
+                        let x = CGFloat(hour) * slot + (slot - barW) / 2
+                        let y = size.height - h
+                        let rect = CGRect(x: x, y: y, width: barW, height: h)
+                        let path = Path(roundedRect: rect, cornerRadius: 1)
+                        context.fill(path, with: .color(heatmapColor(tokens: tokens, ratio: ratio)))
+
+                        // 峰值呼吸点（条顶上方）
+                        if tokens > 0, hour == peak {
+                            let phase = ctx.date.timeIntervalSinceReferenceDate
+                                .truncatingRemainder(dividingBy: 2.0) / 2.0
+                            let dot = CGRect(x: x + barW/2 - 1.25, y: y - 6,
+                                             width: 2.5, height: 2.5)
+                            context.fill(Path(ellipseIn: dot),
+                                         with: .color(Theme.brand.opacity(0.4 + 0.6 * phase)))
                         }
-                        .overlay(alignment: .bottom) {
-                            if isNow {
-                                Circle()
-                                    .fill(Theme.brand.opacity(0.6))
-                                    .frame(width: 2.5, height: 2.5)
-                                    .offset(y: 4)
-                            }
+                        // 当前小时：底部小点
+                        if hour == nowHour {
+                            let dot = CGRect(x: x + barW/2 - 1.25, y: size.height - 2.5,
+                                             width: 2.5, height: 2.5)
+                            context.fill(Path(ellipseIn: dot),
+                                         with: .color(Theme.brand.opacity(0.6)))
                         }
-                        .animation(.spring(response: 0.4, dampingFraction: 0.75), value: buckets)
+                    }
+                    // 刻度基线（虚线感：低透明横线）
+                    context.fill(Path(CGRect(x: 0, y: size.height - 0.5, width: size.width, height: 0.5)),
+                                 with: .color(Color.primary.opacity(0.08)))
                 }
             }
-            .frame(height: 30, alignment: .bottom)
+            .frame(height: 30)
 
-            HStack(spacing: 1.5) {
-                Text("0"); Spacer(); Text("6"); Spacer(); Text("12"); Spacer(); Text("18"); Spacer(); Text("23")
+            // 刻度：显式等分定位（与柱格同宽口径），不再是 Spacer 均分（会漂移 2-3 小时）
+            GeometryReader { geo in
+                let slot = geo.size.width / 24
+                ForEach([0, 6, 12, 18, 23], id: \.self) { h in
+                    Text("\(h)")
+                        .font(.system(size: 7, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .position(x: CGFloat(h) * slot + slot / 2, y: 5)
+                }
             }
-            .font(.system(size: 7, design: .monospaced))
-            .foregroundStyle(.tertiary)
+            .frame(height: 10)
         }
     }
 }

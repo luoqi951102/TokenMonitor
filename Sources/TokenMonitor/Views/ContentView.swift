@@ -529,65 +529,60 @@ struct ContentView: View {
                 }
             }
 
-            HStack(alignment: .bottom, spacing: 2) {
-                ForEach(0..<24, id: \.self) { hour in
-                    let tokens = buckets.first { $0.hour == hour }?.tokens ?? 0
-                    let ratio = maxTokens > 0 ? Double(tokens) / Double(maxTokens) : 0
-                    let isPeak = tokens > 0 && hour == peakHour
-                    let isNow = hour == nowHour
-                    let barHeight = max(3, CGFloat(ratio) * 36)
-                    let barColor = tokens == 0
-                        ? Color.primary.opacity(0.05)
-                        : (Theme.enablesThresholdColors
-                            ? (ratio < 0.33 ? Theme.statusOK.opacity(0.45)
-                                : (ratio < 0.75 ? Theme.statusOK : Theme.statusWarn))
-                            : Theme.brand.opacity(0.25 + 0.75 * ratio))
-                    // 每根柱:固定画布 + bottom 对齐,峰值点 overlay 挂条顶。
-                    // 不用 maxHeight:.infinity 嵌套(布局塌陷致柱子漂移/缺失)。
-                    RoundedRectangle(cornerRadius: 1.5)
-                        .fill(barColor)
-                        .frame(width: 6, height: barHeight)
-                        .frame(height: 42, alignment: .bottom)
-                        .overlay(alignment: .top) {
-                            if isPeak {
-                                TimelineView(.periodic(from: Date(), by: 0.2)) { ctx in
-                                    let phase = ctx.date.timeIntervalSince1970
-                                        .truncatingRemainder(dividingBy: 2.0) / 2.0
-                                    Circle()
-                                        .fill(Theme.brand)
-                                        .frame(width: 3, height: 3)
-                                        .offset(y: -5)
-                                        .opacity(0.4 + 0.6 * phase)
-                                }
-                            }
+            // Canvas 显式绘制：24 格数学等分（同浮窗 HourlyHeatmapMini 修复），
+            // 绕开 SwiftUI 嵌套布局的塌陷/错位。
+            TimelineView(.periodic(from: .now, by: 0.2)) { ctx in
+                Canvas { context, size in
+                    let slot = size.width / 24
+                    let barW: CGFloat = min(8, slot - 3)
+                    let drawH: CGFloat = 36
+                    let peak = peakHour
+                    for hour in 0..<24 {
+                        let tokens = buckets.first { $0.hour == hour }?.tokens ?? 0
+                        let ratio = maxTokens > 0 ? Double(tokens) / Double(maxTokens) : 0
+                        let h = max(3, CGFloat(ratio) * drawH)
+                        let x = CGFloat(hour) * slot + (slot - barW) / 2
+                        let y = size.height - h
+                        let barColor = tokens == 0
+                            ? Color.primary.opacity(0.05)
+                            : (Theme.enablesThresholdColors
+                                ? (ratio < 0.33 ? Theme.statusOK.opacity(0.45)
+                                    : (ratio < 0.75 ? Theme.statusOK : Theme.statusWarn))
+                                : Theme.brand.opacity(0.25 + 0.75 * ratio))
+                        context.fill(
+                            Path(roundedRect: CGRect(x: x, y: y, width: barW, height: h), cornerRadius: 1.5),
+                            with: .color(barColor)
+                        )
+                        if tokens > 0, hour == peak {
+                            let phase = ctx.date.timeIntervalSinceReferenceDate
+                                .truncatingRemainder(dividingBy: 2.0) / 2.0
+                            let dot = CGRect(x: x + barW/2 - 1.5, y: y - 7, width: 3, height: 3)
+                            context.fill(Path(ellipseIn: dot),
+                                         with: .color(Theme.brand.opacity(0.4 + 0.6 * phase)))
                         }
-                        .overlay(alignment: .bottom) {
-                            if isNow {
-                                Circle()
-                                    .fill(Theme.brand.opacity(0.6))
-                                    .frame(width: 3, height: 3)
-                                    .offset(y: 5)
-                            }
+                        if hour == nowHour {
+                            let dot = CGRect(x: x + barW/2 - 1.5, y: size.height - 3, width: 3, height: 3)
+                            context.fill(Path(ellipseIn: dot),
+                                         with: .color(Theme.brand.opacity(0.6)))
                         }
-                        .animation(.spring(response: 0.4, dampingFraction: 0.75), value: buckets)
+                    }
+                    context.fill(Path(CGRect(x: 0, y: size.height - 0.5, width: size.width, height: 0.5)),
+                                 with: .color(Color.primary.opacity(0.08)))
                 }
             }
-            .frame(height: 42, alignment: .bottom)
+            .frame(height: 42)
 
-            // 小时刻度
-            HStack(spacing: 2) {
-                Text("0")
-                Spacer()
-                Text("6")
-                Spacer()
-                Text("12")
-                Spacer()
-                Text("18")
-                Spacer()
-                Text("23")
+            // 刻度：显式等分定位（与柱格同口径）
+            GeometryReader { geo in
+                let slot = geo.size.width / 24
+                ForEach([0, 6, 12, 18, 23], id: \.self) { h in
+                    Text("\(h)")
+                        .font(.system(size: 8, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .position(x: CGFloat(h) * slot + slot / 2, y: 5)
+                }
             }
-            .font(.system(size: 8, design: .monospaced))
-            .foregroundStyle(.tertiary)
+            .frame(height: 10)
         }
         .padding(14)
         .background(Theme.cardBackground(for: colorScheme))
