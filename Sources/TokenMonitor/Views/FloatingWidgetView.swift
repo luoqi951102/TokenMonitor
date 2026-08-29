@@ -89,6 +89,18 @@ struct FloatingWidgetView: View {
         }
         .id(size)  // 让 size 切换时整个内容重新创建（配合 transition）
         .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        // large 档：内容按 360×660 逻辑尺寸排版后整体等比缩到 320×587（×0.89）
+        .frame(
+            width: size.logicalSize.width,
+            height: size.logicalSize.height,
+            alignment: .top
+        )
+        .scaleEffect(size.contentScale, anchor: .top)
+        .frame(
+            width: size.NSSize.width,
+            height: size.NSSize.height,
+            alignment: .top
+        )
     }
 }
 
