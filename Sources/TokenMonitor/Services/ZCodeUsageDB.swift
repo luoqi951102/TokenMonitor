@@ -109,7 +109,7 @@ final class ZCodeUsageDB {
 
         var result: [String: ToolStat] = [:]
         while sqlite3_step(stmt) == SQLITE_ROW {
-            let model = normalizeModel(String(cString: sqlite3_column_text(stmt, 0)))
+            let model = normalizeModel(String(cString: sqlite3_column_text(stmt, 0))).lowercased()
             let startedMs = sqlite3_column_int64(stmt, 1)
             let tools = Int(sqlite3_column_int64(stmt, 2))
             guard let dateStr = Self.localDateString(fromMs: startedMs) else { continue }
@@ -173,7 +173,7 @@ final class ZCodeUsageDB {
 
         var result: [String: Int] = [:]
         while sqlite3_step(stmt) == SQLITE_ROW {
-            let model = normalizeModel(String(cString: sqlite3_column_text(stmt, 0)))
+            let model = normalizeModel(String(cString: sqlite3_column_text(stmt, 0))).lowercased()
             let startedMs = sqlite3_column_int64(stmt, 1)
             let reasoning = Int(sqlite3_column_int64(stmt, 2))
             guard reasoning > 0 else { continue }

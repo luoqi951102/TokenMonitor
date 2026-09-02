@@ -150,12 +150,12 @@ final class Aggregator {
             // 按 model 分组，计算每个 model 的总 msgCount（用于按比例分摊）
             var modelTotalMsgs: [String: Int] = [:]
             for r in rows where r.source == "zcode" {
-                modelTotalMsgs[r.model, default: 0] += r.msgCount
+                modelTotalMsgs[r.model.lowercased(), default: 0] += r.msgCount
             }
             for i in rows.indices where rows[i].source == "zcode" {
-                let stat = toolStats[rows[i].model]
+                let stat = toolStats[rows[i].model.lowercased()]
                 let totalTools = stat?.toolCalls ?? 0
-                let totalMsgs = modelTotalMsgs[rows[i].model] ?? 1
+                let totalMsgs = modelTotalMsgs[rows[i].model.lowercased()] ?? 1
                 // 按 msgCount 比例分摊工具调用数到各 provider
                 let shareTools = totalMsgs > 0 ? totalTools * rows[i].msgCount / totalMsgs : 0
                 rows[i] = ModelUsage(
@@ -192,10 +192,14 @@ final class Aggregator {
         var grouped: [String: ModelUsage] = [:]
         var order: [String] = []
         for r in rows {
-            let key = "\(r.source)|\(r.displayWithProvider)"
+            // key 忽略大小写：ZCode 服务端对同一模型返回过 "glm-5.2"/"GLM-5.2" 两种写法,
+            // 不合并会让月度/全部视图的模型统计拆成两行 (今日/本周数据少看不出)
+            let key = "\(r.source)|\(r.displayWithProvider.lowercased())"
             if let existing = grouped[key] {
+                // 显示名保留用量大的那行的原始写法 (主流写法胜出)
+                let dominant = r.totalContextTokens > existing.totalContextTokens ? r : existing
                 grouped[key] = ModelUsage(
-                    model: existing.model,
+                    model: dominant.model,
                     source: existing.source,
                     provider: existing.provider.isEmpty ? r.provider : existing.provider,
                     inputTokens: existing.inputTokens + r.inputTokens,
