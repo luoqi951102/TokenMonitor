@@ -23,13 +23,13 @@ final class FloatingWidgetWindow {
     enum Size: String, CaseIterable {
         case compact      // 200×100
         case medium       // 320×290（含 streak + Top 模型 + 项目）
-        case large        // 360×630（内容紧凑排版 + 大字号，原生渲染不缩放）
+        case large        // 360×655（紧凑排版 + 大字号，原生渲染）
 
         var NSSize: AppKit.NSSize {
             switch self {
             case .compact: return .init(width: 200, height: 100)
             case .medium:  return .init(width: 320, height: 290)
-            case .large:   return .init(width: 360, height: 630)
+            case .large:   return .init(width: 360, height: 655)
             }
         }
 

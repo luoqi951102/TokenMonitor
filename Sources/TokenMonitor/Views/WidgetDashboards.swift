@@ -182,7 +182,7 @@ struct HeroRings: View {
                 // 中心：总 token + 速率
                 VStack(spacing: 0) {
                     Text(formatTokens(total))
-                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .font(.system(size: 19, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(.primary)
                         .contentTransition(.numericText(value: Double(total)))
@@ -190,7 +190,7 @@ struct HeroRings: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
                     Text(rateText)
-                        .font(.system(size: 9.5, design: .monospaced))
+                        .font(.system(size: 10.5, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -262,25 +262,25 @@ struct HeroRings: View {
         HStack(spacing: 5) {
             Circle().fill(color).frame(width: 5, height: 5)
             Text(name)
-                .font(.system(size: 10.5, weight: .semibold))
+                .font(.system(size: 11.5, weight: .semibold))
                 .foregroundStyle(.primary)
             Spacer(minLength: 2)
             VStack(alignment: .trailing, spacing: 0) {
                 Text(value)
-                    .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .fixedSize()           // 禁止换行（"15.7M/时" 被拆两行的修复）
                     .minimumScaleFactor(0.85)
                 if let pct {
                     Text(pct)
-                        .font(.system(size: 8.5, design: .monospaced))
+                        .font(.system(size: 9.5, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }
         }
-        .frame(width: 108)
+        .frame(width: 116)
     }
 }
 
@@ -467,11 +467,11 @@ struct CompositionBar: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text("Token 构成")
-                    .font(.system(size: 10.5, weight: .semibold))
+                    .font(.system(size: 11.5, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text("总 \(formatTokens(total))")
-                    .font(.system(size: 9.5, design: .monospaced))
+                    .font(.system(size: 10.5, design: .monospaced))
                     .foregroundStyle(.tertiary)
             }
 
@@ -494,7 +494,7 @@ struct CompositionBar: View {
                     HStack(spacing: 2) {
                         Circle().fill(seg.color).frame(width: 4, height: 4)
                         Text("\(seg.name) \(pct(seg.value))")
-                            .font(.system(size: 9.5, design: .monospaced))
+                            .font(.system(size: 10.5, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -536,16 +536,16 @@ struct HourlyHeatmapMini: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text("今日时段")
-                    .font(.system(size: 10.5, weight: .semibold))
+                    .font(.system(size: 11.5, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
                 if let peak = peakHour, peak == nowHour {
                     Text("峰值进行中 \(peak):00")
-                        .font(.system(size: 9.5, design: .monospaced))
+                        .font(.system(size: 10.5, design: .monospaced))
                         .foregroundStyle(Theme.brand)
                 } else if let peak = peakHour, let peakTokens = buckets.first(where: { $0.hour == peak })?.tokens {
                     Text("峰值 \(peak):00 · \(formatTokens(peakTokens))")
-                        .font(.system(size: 9.5, design: .monospaced))
+                        .font(.system(size: 10.5, design: .monospaced))
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -591,19 +591,19 @@ struct HourlyHeatmapMini: View {
                                  with: .color(Color.primary.opacity(0.08)))
                 }
             }
-            .frame(height: 34)
+            .frame(height: 38)
 
             // 刻度：显式等分定位（与柱格同宽口径），不再是 Spacer 均分（会漂移 2-3 小时）
             GeometryReader { geo in
                 let slot = geo.size.width / 24
                 ForEach([0, 6, 12, 18, 23], id: \.self) { h in
                     Text("\(h)")
-                        .font(.system(size: 8.5, design: .monospaced))
+                        .font(.system(size: 9.5, design: .monospaced))
                         .foregroundStyle(.tertiary)
-                        .position(x: CGFloat(h) * slot + slot / 2, y: 5)
+                        .position(x: CGFloat(h) * slot + slot / 2, y: 6)
                 }
             }
-            .frame(height: 11)
+            .frame(height: 12)
         }
     }
 }
