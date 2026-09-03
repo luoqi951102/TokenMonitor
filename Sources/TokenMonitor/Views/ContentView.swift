@@ -443,6 +443,9 @@ struct ContentView: View {
     // sparkline 跟 Apple 系统工具的 trend indicator 一致，更轻、更现代。
 
     private var trendCard: some View {
+        // 今日档: 趋势 = 当天 0-24 时逐小时柱 (与浮窗口径一致);
+        // 其他档: 维持按天柱
+        let isToday = viewModel.range == .today
         let displayData: [DailyTotal] = {
             let cap: Int
             switch viewModel.range {
@@ -459,14 +462,69 @@ struct ContentView: View {
                     .font(Theme.Typography.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(viewModel.rangeLabel)
+                Text(isToday ? "0-24 时" : viewModel.rangeLabel)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
 
-            if displayData.isEmpty {
+            if isToday && !viewModel.hourly.isEmpty {
+                // 今日 0-24 时逐小时柱 (Canvas 版, 复用主面板热力条口径)
+                let buckets = viewModel.hourly
+                let hourlyMax = buckets.map(\.tokens).max() ?? 1
+                let peakHour = buckets.max { $0.tokens < $1.tokens }?.hour
+                let nowHour = Calendar.current.component(.hour, from: Date())
+                TimelineView(.periodic(from: .now, by: 0.2)) { ctx in
+                    Canvas { context, size in
+                        let slot = size.width / 24
+                        let barW: CGFloat = min(10, slot - 3)
+                        let drawH: CGFloat = 56
+                        for hour in 0..<24 {
+                            let tokens = buckets.first { $0.hour == hour }?.tokens ?? 0
+                            let ratio = hourlyMax > 0 ? Double(tokens) / Double(hourlyMax) : 0
+                            let h = max(3, CGFloat(ratio) * drawH)
+                            let x = CGFloat(hour) * slot + (slot - barW) / 2
+                            let y = size.height - h
+                            let barColor = tokens == 0
+                                ? Color.primary.opacity(0.05)
+                                : Theme.brand.opacity(0.25 + 0.75 * ratio)
+                            context.fill(
+                                Path(roundedRect: CGRect(x: x, y: y, width: barW, height: h), cornerRadius: 2),
+                                with: .color(barColor)
+                            )
+                            if tokens > 0, hour == peakHour {
+                                let phase = ctx.date.timeIntervalSinceReferenceDate
+                                    .truncatingRemainder(dividingBy: 2.0) / 2.0
+                                let dot = CGRect(x: x + barW/2 - 2, y: y - 8, width: 4, height: 4)
+                                context.fill(Path(ellipseIn: dot),
+                                             with: .color(Theme.brand.opacity(0.4 + 0.6 * phase)))
+                            }
+                            if hour == nowHour {
+                                let dot = CGRect(x: x + barW/2 - 2, y: size.height - 4, width: 4, height: 4)
+                                context.fill(Path(ellipseIn: dot),
+                                             with: .color(Theme.brand.opacity(0.6)))
+                            }
+                        }
+                        context.fill(Path(CGRect(x: 0, y: size.height - 0.5, width: size.width, height: 0.5)),
+                                     with: .color(Color.primary.opacity(0.08)))
+                    }
+                }
+                .frame(height: 62)
+                // 刻度
+                .overlay(alignment: .bottom) { EmptyView() }
+
+                GeometryReader { geo in
+                    let slot = geo.size.width / 24
+                    ForEach([0, 6, 12, 18, 23], id: \.self) { hh in
+                        Text("\(hh)")
+                            .font(.system(size: 8.5, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                            .position(x: CGFloat(hh) * slot + slot / 2, y: 5)
+                    }
+                }
+                .frame(height: 11)
+            } else if displayData.isEmpty {
                 Text("区间内无数据")
                     .font(Theme.Typography.body)
                     .foregroundStyle(.tertiary)

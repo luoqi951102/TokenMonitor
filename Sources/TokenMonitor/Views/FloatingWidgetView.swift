@@ -807,10 +807,7 @@ private struct LargeContent: View {
                     CompositionBar(models: viewModel.models)
                 }
 
-                // 今日时段热力条（仅今日档显示）
-                if viewModel.range == .today && !viewModel.hourly.isEmpty {
-                    HourlyHeatmapMini(buckets: viewModel.hourly)
-                }
+                // (今日时段热力条已移除——今日档趋势卡已改为 0-24 时制，避免同屏重复)
             }
             .padding(10)
             .background(
@@ -960,11 +957,16 @@ private struct LargeContent: View {
     }
 
     private var miniTrend: some View {
+        // 今日档: 趋势 = 当天 0-24 时逐小时柱 (用户要求 0-24 时制);
+        // 其他档: 维持近 14 天按天柱
+        let isToday = viewModel.range == .today
+        let hourlyData = viewModel.hourly
         let data = Array(viewModel.daily.suffix(14))
-        let maxTokens = data.map(\.tokens).max() ?? 1
+        let hourlyMax = hourlyData.map(\.tokens).max() ?? 1
+        let maxTokens = isToday ? hourlyMax : (data.map(\.tokens).max() ?? 1)
         return VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("趋势")
+                Text(isToday ? "趋势 · 0-24 时" : "趋势")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -979,13 +981,26 @@ private struct LargeContent: View {
             // 改 HStack 默认 .center 对齐 + 每根柱用 frame(maxHeight:.infinity, alignment:.bottom)
             // 既达到底部对齐效果又不依赖 baseline。
             HStack(spacing: 2) {
-                ForEach(data) { d in
-                    let isMax = d.tokens == maxTokens && maxTokens > 0
-                    RoundedRectangle(cornerRadius: 1.5)
-                        .fill(isMax ? Theme.brandGradient : Theme.chartBar)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: barHeight(d.tokens, max: maxTokens), alignment: .bottom)
-                        .animation(.spring(response: 0.45, dampingFraction: 0.75), value: data)
+                if isToday {
+                    // 今日 0-24 时逐小时柱
+                    ForEach(0..<24, id: \.self) { hour in
+                        let tokens = hourlyData.first { $0.hour == hour }?.tokens ?? 0
+                        let isMax = tokens == hourlyMax && hourlyMax > 0
+                        RoundedRectangle(cornerRadius: 1.5)
+                            .fill(isMax ? Theme.brandGradient : Theme.chartBar)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: barHeight(tokens, max: hourlyMax), alignment: .bottom)
+                            .animation(.spring(response: 0.45, dampingFraction: 0.75), value: hourlyData)
+                    }
+                } else {
+                    ForEach(data) { d in
+                        let isMax = d.tokens == maxTokens && maxTokens > 0
+                        RoundedRectangle(cornerRadius: 1.5)
+                            .fill(isMax ? Theme.brandGradient : Theme.chartBar)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: barHeight(d.tokens, max: maxTokens), alignment: .bottom)
+                            .animation(.spring(response: 0.45, dampingFraction: 0.75), value: data)
+                    }
                 }
             }
             .frame(height: 30, alignment: .bottom)
