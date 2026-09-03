@@ -798,7 +798,7 @@ private struct LargeContent: View {
                     velocity: velocityValue,
                     velocityPeak: velocityPeak,
                     velocityUnit: viewModel.range == .today ? "/时" : "/天",
-                    ringScale: 0.86
+                    ringScale: 1.0
                 )
                 .frame(maxWidth: .infinity)
 

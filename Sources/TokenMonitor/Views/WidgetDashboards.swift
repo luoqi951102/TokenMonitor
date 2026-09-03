@@ -203,12 +203,16 @@ struct HeroRings: View {
                     .frame(width: 100 * ringScale, height: 100 * ringScale)
             )
 
-            // 右侧图例：三行（色点 + 名 + 值）
+            // 右侧图例：CC 为 0 时隐藏该行（用户要求），只留有数据项 + 速率
             VStack(alignment: .leading, spacing: 7) {
-                legendRow(color: Theme.brand, name: "CC",
-                          value: formatTokens(claudeTokens), pct: pct(claudeTokens))
-                legendRow(color: Theme.tokenCacheRead, name: "ZC",
-                          value: formatTokens(zcodeTokens), pct: pct(zcodeTokens))
+                if claudeTokens > 0 {
+                    legendRow(color: Theme.brand, name: "CC",
+                              value: formatTokens(claudeTokens), pct: pct(claudeTokens))
+                }
+                if zcodeTokens > 0 {
+                    legendRow(color: Theme.tokenCacheRead, name: "ZC",
+                              value: formatTokens(zcodeTokens), pct: pct(zcodeTokens))
+                }
                 legendRow(color: Theme.tokenCacheWrite, name: "速率",
                           value: rateText, pct: nil)
             }
