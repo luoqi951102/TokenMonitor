@@ -18,11 +18,11 @@ enum UsageSource: String, Codable, CaseIterable {
         }
     }
 
-    /// 极简短标签（用于浮窗等窄空间场景）。CC = Claude Code，ZC = ZCode。
+    /// 全称标签（用户要求直观显示 Claude Code / ZCode）
     var shortLabel: String {
         switch self {
-        case .claude: return "CC"
-        case .zcode:  return "ZC"
+        case .claude: return "Claude Code"
+        case .zcode:  return "ZCode"
         }
     }
 }

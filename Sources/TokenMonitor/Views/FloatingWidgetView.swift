@@ -112,7 +112,7 @@ private struct RangeSwitcher: View {
                         .foregroundStyle(isSelected ? Color.white : .secondary)
                         .lineLimit(1)
                         .fixedSize()      // 禁止截断成 "..."
-                        .padding(.horizontal, 6)
+                        .padding(.horizontal, 5)
                         .padding(.vertical, 3)
                         .background(
                             ZStack {
@@ -145,7 +145,7 @@ private struct SourceSwitcher: View {
     @Namespace private var ns
 
     private let options: [(value: String, label: String)] = [
-        ("all", "全部"), ("claude", "CC"), ("zcode", "ZC")
+        ("all", "全部"), ("claude", "Claude Code"), ("zcode", "ZCode")
     ]
 
     var body: some View {
