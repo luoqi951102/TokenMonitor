@@ -758,7 +758,7 @@ private struct LargeContent: View {
                         .monospacedDigit()
                         .foregroundStyle(Theme.tokenCacheWrite)
                     Text("消息")
-                        .font(.system(size: 10))
+                        .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
                 VStack(alignment: .trailing, spacing: 1) {
@@ -767,7 +767,7 @@ private struct LargeContent: View {
                         .monospacedDigit()
                         .foregroundStyle(Theme.tokenCacheRead)
                     Text("工具")
-                        .font(.system(size: 10))
+                        .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
                 // streak 火苗
@@ -839,7 +839,7 @@ private struct LargeContent: View {
             // Top Models
             VStack(alignment: .leading, spacing: 6) {
                 Text("Top 模型")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
                 let maxTotal = viewModel.models.first?.totalTokens ?? 1
@@ -851,18 +851,18 @@ private struct LargeContent: View {
                             .frame(width: 7, height: 7)
                         VStack(alignment: .leading, spacing: 0) {
                             Text(usage.model)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.system(size: 12.5, weight: .medium))
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                             // 次行：provider 后追加来源短标签 CC/ZC（浮窗空间窄用短名）
                             let srcShort = UsageSource(rawValue: usage.source)?.shortLabel ?? usage.source
                             Text(providerName.isEmpty ? srcShort : "\(providerName) · \(srcShort)")
-                                .font(.system(size: 8))
+                                .font(.system(size: 9.5))
                                 .foregroundStyle(.tertiary)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                         }
-                        .frame(width: 110, alignment: .leading)
+                        .frame(width: 122, alignment: .leading)
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
                                 RoundedRectangle(cornerRadius: 2)
@@ -874,11 +874,11 @@ private struct LargeContent: View {
                         }
                         .frame(height: 7)
                         Text(formatTokens(usage.totalTokens))
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
                             .foregroundStyle(.primary)
-                            .frame(width: 50, alignment: .trailing)
+                            .frame(width: 56, alignment: .trailing)
                     }
-                    .frame(height: 16)
+                    .frame(height: 18)
                     .padding(.horizontal, 16)
                 }
             }
@@ -886,7 +886,7 @@ private struct LargeContent: View {
             // Top 项目
             VStack(alignment: .leading, spacing: 4) {
                 Text("Top 项目")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
                 let projects = viewModel.topProjects(3)
@@ -897,7 +897,7 @@ private struct LargeContent: View {
                             .font(.system(size: 8))
                             .foregroundStyle(Theme.tokenCacheWrite.opacity(0.8))
                         Text(lastPathComponent(p.project))
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.system(size: 11.5, weight: .medium))
                             .lineLimit(1)
                             .truncationMode(.middle)
                             .frame(width: 130, alignment: .leading)
@@ -917,11 +917,11 @@ private struct LargeContent: View {
                         }
                         .frame(height: 6)
                         Text(formatTokens(p.tokens))
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
                             .foregroundStyle(.primary)
-                            .frame(width: 46, alignment: .trailing)
+                            .frame(width: 50, alignment: .trailing)
                     }
-                    .frame(height: 14)
+                    .frame(height: 16)
                     .padding(.horizontal, 16)
                 }
             }
@@ -965,11 +965,11 @@ private struct LargeContent: View {
         return VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text("趋势")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(viewModel.rangeLabel)
-                    .font(.system(size: 9))
+                    .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
