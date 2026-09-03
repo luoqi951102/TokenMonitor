@@ -470,49 +470,16 @@ struct ContentView: View {
             }
 
             if isToday && !viewModel.hourly.isEmpty {
-                // 今日 0-24 时逐小时柱 (Canvas 版, 复用主面板热力条口径)
+                // 今日 0-24 时折线
                 let buckets = viewModel.hourly
-                let hourlyMax = buckets.map(\.tokens).max() ?? 1
-                let peakHour = buckets.max { $0.tokens < $1.tokens }?.hour
-                let nowHour = Calendar.current.component(.hour, from: Date())
-                TimelineView(.periodic(from: .now, by: 0.2)) { ctx in
-                    Canvas { context, size in
-                        let slot = size.width / 24
-                        let barW: CGFloat = min(10, slot - 3)
-                        let drawH: CGFloat = 56
-                        for hour in 0..<24 {
-                            let tokens = buckets.first { $0.hour == hour }?.tokens ?? 0
-                            let ratio = hourlyMax > 0 ? Double(tokens) / Double(hourlyMax) : 0
-                            let h = max(3, CGFloat(ratio) * drawH)
-                            let x = CGFloat(hour) * slot + (slot - barW) / 2
-                            let y = size.height - h
-                            let barColor = tokens == 0
-                                ? Color.primary.opacity(0.05)
-                                : Theme.brand.opacity(0.25 + 0.75 * ratio)
-                            context.fill(
-                                Path(roundedRect: CGRect(x: x, y: y, width: barW, height: h), cornerRadius: 2),
-                                with: .color(barColor)
-                            )
-                            if tokens > 0, hour == peakHour {
-                                let phase = ctx.date.timeIntervalSinceReferenceDate
-                                    .truncatingRemainder(dividingBy: 2.0) / 2.0
-                                let dot = CGRect(x: x + barW/2 - 2, y: y - 8, width: 4, height: 4)
-                                context.fill(Path(ellipseIn: dot),
-                                             with: .color(Theme.brand.opacity(0.4 + 0.6 * phase)))
-                            }
-                            if hour == nowHour {
-                                let dot = CGRect(x: x + barW/2 - 2, y: size.height - 4, width: 4, height: 4)
-                                context.fill(Path(ellipseIn: dot),
-                                             with: .color(Theme.brand.opacity(0.6)))
-                            }
-                        }
-                        context.fill(Path(CGRect(x: 0, y: size.height - 0.5, width: size.width, height: 0.5)),
-                                     with: .color(Color.primary.opacity(0.08)))
-                    }
-                }
+                let values: [Double] = (0..<24).map { h in Double(buckets.first { $0.hour == h }?.tokens ?? 0) }
+                TrendLineChart(
+                    values: values,
+                    peakIndex: buckets.max { $0.tokens < $1.tokens }?.hour,
+                    nowIndex: Calendar.current.component(.hour, from: Date()),
+                    breathe: true
+                )
                 .frame(height: 62)
-                // 刻度
-                .overlay(alignment: .bottom) { EmptyView() }
 
                 GeometryReader { geo in
                     let slot = geo.size.width / 24
@@ -537,24 +504,23 @@ struct ContentView: View {
                 //
                 // 生长动画：displayData 变化时（切 range / 刷新）柱高从旧值 spring
                 // 到新值；每根柱 .id(d.date) + transition 让新柱从底部淡入弹起。
-                let maxTokens = displayData.map(\.tokens).max() ?? 1
-                let n = displayData.count
-                let spacing: CGFloat = n > 20 ? 1.5 : (n > 10 ? 3 : 5)
-                let showAllTexts: Bool = n <= 14
-                HStack(alignment: .bottom, spacing: spacing) {
-                    ForEach(Array(displayData.enumerated()), id: \.element.id) { idx, d in
-                        trendBar(
-                            d,
-                            maxTokens: maxTokens,
-                            isMax: d.tokens == maxTokens && maxTokens > 0,
-                            showAllTexts: showAllTexts,
-                            idx: idx,
-                            total: n
-                        )
+                // 统一折线 (峰值点自动最高, 末端 accent dot 标最新)
+                TrendLineChart(values: displayData.map { Double($0.tokens) })
+                    .frame(height: 90)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.8), value: displayData)
+
+                // 日期标签: 首中尾 (折线图不逐点标注)
+                HStack {
+                    Text(String(displayData.first!.date.suffix(5)))
+                    Spacer()
+                    if displayData.count > 2 {
+                        Text(String(displayData[displayData.count / 2].date.suffix(5)))
                     }
+                    Spacer()
+                    Text(String(displayData.last!.date.suffix(5)))
                 }
-                .frame(height: 90)
-                .animation(.spring(response: 0.5, dampingFraction: 0.8), value: displayData)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(.tertiary)
             }
         }
         .padding(14)
@@ -645,48 +611,6 @@ struct ContentView: View {
         .padding(14)
         .background(Theme.cardBackground(for: colorScheme))
         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-    }
-
-    /// 单根趋势柱（顶数字 + 柱体 + 底部日期标签）。
-    /// 拆成独立函数避免 ForEach 闭包过重触发 Swift 类型检查超时。
-    private func trendBar(
-        _ d: DailyTotal,
-        maxTokens: Int,
-        isMax: Bool,
-        showAllTexts: Bool,
-        idx: Int,
-        total: Int
-    ) -> some View {
-        VStack(spacing: 2) {
-            if showAllTexts || isMax {
-                Text(formatTokens(d.tokens))
-                    .font(Theme.Typography.captionMonospaced)
-                    .foregroundStyle(isMax ? Theme.brand : Color.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-            } else {
-                Text("0")
-                    .font(Theme.Typography.captionMonospaced)
-                    .foregroundStyle(.clear)
-                    .lineLimit(1)
-            }
-            RoundedRectangle(cornerRadius: Theme.Radius.bar, style: .continuous)
-                .fill(isMax ? Theme.brandGradient : Theme.chartBar)
-                .frame(height: barHeight(d.tokens, max: maxTokens))
-            if showAllTexts || idx == 0 || idx == total - 1 || (total > 3 && idx == total / 2) {
-                Text(String(d.date.suffix(5)))
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(isMax ? Theme.brand.opacity(0.8) : Color.secondary.opacity(0.7))
-            } else {
-                Text("00/00")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(.clear)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .id(d.date)
-        .transition(.scale(scale: 0.2, anchor: .bottom).combined(with: .opacity))
-        .animation(.spring(response: 0.45, dampingFraction: 0.75), value: maxTokens)
     }
 
     private func barHeight(_ v: Int, max m: Int) -> CGFloat {

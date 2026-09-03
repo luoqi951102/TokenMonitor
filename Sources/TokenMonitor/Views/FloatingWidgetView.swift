@@ -957,13 +957,16 @@ private struct LargeContent: View {
     }
 
     private var miniTrend: some View {
-        // 今日档: 趋势 = 当天 0-24 时逐小时柱 (用户要求 0-24 时制);
-        // 其他档: 维持近 14 天按天柱
+        // 今日档: 趋势 = 当天 0-24 时逐小时折线; 其他档: 近 14 天按天折线
         let isToday = viewModel.range == .today
         let hourlyData = viewModel.hourly
         let data = Array(viewModel.daily.suffix(14))
-        let hourlyMax = hourlyData.map(\.tokens).max() ?? 1
-        let maxTokens = isToday ? hourlyMax : (data.map(\.tokens).max() ?? 1)
+        let values: [Double] = isToday
+            ? (0..<24).map { h in Double(hourlyData.first { $0.hour == h }?.tokens ?? 0) }
+            : data.map { Double($0.tokens) }
+        let peakIdx: Int? = isToday
+            ? hourlyData.max { $0.tokens < $1.tokens }.map { $0.hour }
+            : nil
         return VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(isToday ? "趋势 · 0-24 时" : "趋势")
@@ -980,30 +983,14 @@ private struct LargeContent: View {
             // 触发 CollectingViewsWithInvalidBaselines ObjC 异常 → SwiftUI 切源重建时崩。
             // 改 HStack 默认 .center 对齐 + 每根柱用 frame(maxHeight:.infinity, alignment:.bottom)
             // 既达到底部对齐效果又不依赖 baseline。
-            HStack(spacing: 2) {
-                if isToday {
-                    // 今日 0-24 时逐小时柱
-                    ForEach(0..<24, id: \.self) { hour in
-                        let tokens = hourlyData.first { $0.hour == hour }?.tokens ?? 0
-                        let isMax = tokens == hourlyMax && hourlyMax > 0
-                        RoundedRectangle(cornerRadius: 1.5)
-                            .fill(isMax ? Theme.brandGradient : Theme.chartBar)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: barHeight(tokens, max: hourlyMax), alignment: .bottom)
-                            .animation(.spring(response: 0.45, dampingFraction: 0.75), value: hourlyData)
-                    }
-                } else {
-                    ForEach(data) { d in
-                        let isMax = d.tokens == maxTokens && maxTokens > 0
-                        RoundedRectangle(cornerRadius: 1.5)
-                            .fill(isMax ? Theme.brandGradient : Theme.chartBar)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: barHeight(d.tokens, max: maxTokens), alignment: .bottom)
-                            .animation(.spring(response: 0.45, dampingFraction: 0.75), value: data)
-                    }
-                }
-            }
-            .frame(height: 30, alignment: .bottom)
+            TrendLineChart(
+                values: values,
+                peakIndex: peakIdx,
+                nowIndex: isToday ? Calendar.current.component(.hour, from: Date()) : nil,
+                breathe: isToday
+            )
+            .frame(height: 34)
+            .animation(.spring(response: 0.45, dampingFraction: 0.75), value: values)
         }
     }
 
