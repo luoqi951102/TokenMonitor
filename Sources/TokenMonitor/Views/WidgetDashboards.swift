@@ -133,6 +133,8 @@ struct HeroRings: View {
     let velocity: Double       // 当前速率
     let velocityPeak: Double   // 峰值速率
     var velocityUnit: String = "/时"
+    /// 几何缩放系数（紧凑排版用；只缩环直径/线宽，字号保持原生渲染清晰）
+    var ringScale: CGFloat = 1.0
 
     private var ccFrac: Double {
         let m = Double(max(claudeTokens, zcodeTokens))
@@ -164,16 +166,16 @@ struct HeroRings: View {
             // 环体（整组轻微呼吸缩放）
             ZStack {
                 ringLayer(progress: ccFrac,
-                          diameter: 96, lineWidth: 9,
+                          diameter: 96 * ringScale, lineWidth: 9 * ringScale,
                           color: Theme.brand, lightColor: Theme.brandLight,
                           breath: breath, flowDeg: flowDeg)
                 ringLayer(progress: zcFrac,
-                          diameter: 74, lineWidth: 9,
+                          diameter: 74 * ringScale, lineWidth: 9 * ringScale,
                           color: Theme.tokenCacheRead,
                           lightColor: Theme.tokenCacheRead.opacity(0.6),
                           breath: breath, flowDeg: flowDeg)
                 ringLayer(progress: vFrac,
-                          diameter: 54, lineWidth: 8,
+                          diameter: 54 * ringScale, lineWidth: 8 * ringScale,
                           color: Theme.tokenCacheWrite,
                           lightColor: Theme.tokenCacheWrite.opacity(0.6),
                           breath: breath, flowDeg: flowDeg)
@@ -192,13 +194,13 @@ struct HeroRings: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .frame(width: 100, height: 100)
+            .frame(width: 100 * ringScale, height: 100 * ringScale)
             // 呼吸缩放：±1.2% 跟光晕同相位，非常轻微
             .scaleEffect(1.0 + 0.012 * breath)
-            // 粒子能量流：4 颗亮点沿外环轨道绕行带拖尾（轨道半径 48 = 外环半径）
+            // 粒子能量流：4 颗亮点沿外环轨道绕行带拖尾（轨道半径随 ringScale）
             .overlay(
-                OrbitParticles(radius: 48, color: Theme.brand, count: 4, speed: 9.0)
-                    .frame(width: 100, height: 100)
+                OrbitParticles(radius: 48 * ringScale, color: Theme.brand, count: 4, speed: 9.0)
+                    .frame(width: 100 * ringScale, height: 100 * ringScale)
             )
 
             // 右侧图例：三行（色点 + 名 + 值）

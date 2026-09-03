@@ -89,18 +89,6 @@ struct FloatingWidgetView: View {
         }
         .id(size)  // 让 size 切换时整个内容重新创建（配合 transition）
         .transition(.opacity.combined(with: .scale(scale: 0.96)))
-        // large 档：内容按 360×660 逻辑尺寸排版后整体等比缩到 320×587（×0.89）
-        .frame(
-            width: size.logicalSize.width,
-            height: size.logicalSize.height,
-            alignment: .top
-        )
-        .scaleEffect(size.contentScale, anchor: .top)
-        .frame(
-            width: size.NSSize.width,
-            height: size.NSSize.height,
-            alignment: .top
-        )
     }
 }
 
@@ -601,7 +589,7 @@ private struct MediumContent: View {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(formatTokens(viewModel.totalTokens))
-                        .font(Theme.Typography.metric)
+                        .font(.system(size: 24, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(.primary)
                         .contentTransition(.numericText(value: Double(viewModel.totalTokens)))
@@ -726,7 +714,7 @@ private struct LargeContent: View {
     @ObservedObject var viewModel: DashboardViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 7) {
             // Header
             HStack(spacing: 6) {
                 Image(systemName: "chart.bar.xaxis")
@@ -739,7 +727,7 @@ private struct LargeContent: View {
                 RefreshIconButton(viewModel: viewModel, size: 12)
             }
             .padding(.horizontal, 16)
-            .padding(.top, 14)
+            .padding(.top, 10)
 
             // 筛选条：range + source
             FloatingFilterBar(viewModel: viewModel)
@@ -749,7 +737,7 @@ private struct LargeContent: View {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(formatTokens(viewModel.totalTokens))
-                        .font(Theme.Typography.metric)
+                        .font(.system(size: 24, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(.primary)
                         .contentTransition(.numericText(value: Double(viewModel.totalTokens)))
@@ -766,7 +754,7 @@ private struct LargeContent: View {
                 Spacer(minLength: 4)
                 VStack(alignment: .trailing, spacing: 1) {
                     Text("\(viewModel.totalMsgs)")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(Theme.tokenCacheWrite)
                     Text("消息")
@@ -775,7 +763,7 @@ private struct LargeContent: View {
                 }
                 VStack(alignment: .trailing, spacing: 1) {
                     Text("\(viewModel.totalToolCalls)")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(Theme.tokenCacheRead)
                     Text("工具")
@@ -802,14 +790,15 @@ private struct LargeContent: View {
             Divider().opacity(0.4)
 
             // ===== 仪表盘区（统一卡片容器，整体感）=====
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
                 // Hero 三层同心发光环（CC / ZC / 速率 融合在一个视觉锚点）
                 HeroRings(
                     claudeTokens: viewModel.models.filter { $0.source == "claude" }.reduce(0) { $0 + $1.totalTokens },
                     zcodeTokens: viewModel.models.filter { $0.source == "zcode" }.reduce(0) { $0 + $1.totalTokens },
                     velocity: velocityValue,
                     velocityPeak: velocityPeak,
-                    velocityUnit: viewModel.range == .today ? "/时" : "/天"
+                    velocityUnit: viewModel.range == .today ? "/时" : "/天",
+                    ringScale: 0.86
                 )
                 .frame(maxWidth: .infinity)
 
@@ -823,7 +812,7 @@ private struct LargeContent: View {
                     HourlyHeatmapMini(buckets: viewModel.hourly)
                 }
             }
-            .padding(12)
+            .padding(10)
             .background(
                 // 统一卡片底：把 Hero + 构成 + 热力 三块视觉上框成一块
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -854,7 +843,7 @@ private struct LargeContent: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
                 let maxTotal = viewModel.models.first?.totalTokens ?? 1
-                ForEach(viewModel.topModels(5)) { usage in
+                ForEach(viewModel.topModels(4)) { usage in
                     let providerName = providerDisplayName(usage.provider, model: usage.model)
                     HStack(spacing: 6) {
                         Circle()
